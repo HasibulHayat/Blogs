@@ -1,0 +1,972 @@
+# WebMvcConfigurer in Spring Boot — Detailed Beginner Guide
+
+## 1. What is WebMvcConfigurer?
+
+`WebMvcConfigurer` is a **Java interface provided by Spring**.
+
+Its purpose is to give you a way to **customize Spring MVC**.
+
+Think of it like this:
+
+```text
+Spring MVC
+    |
+    |-- already has default behavior
+    |
+    ↓
+WebMvcConfigurer
+    |
+    |-- gives you ways to customize that behavior
+    |
+    ├── CORS
+    ├── Interceptors
+    ├── Resource handling
+    ├── View controllers
+    ├── Path matching
+    └── Other MVC behavior
+```
+
+You are normally **not building Spring MVC yourself** when you use this interface.
+
+You are saying:
+
+> "Spring, keep your normal MVC behavior, but I want to customize these particular parts."
+
+---
+
+# 2. First: what is Spring MVC?
+
+Spring MVC is the part of Spring that handles web requests.
+
+For example:
+
+```http
+GET /api/v1/units
+```
+
+A simplified flow is:
+
+```text
+HTTP Request
+     |
+     ↓
+Spring MVC
+     |
+     ↓
+Find the correct controller
+     |
+     ↓
+Controller method
+     |
+     ↓
+Service
+     |
+     ↓
+Response
+```
+
+Spring MVC already knows how to do many things, such as:
+
+- Map URLs to controller methods
+- Handle HTTP methods
+- Read request bodies
+- Convert JSON
+- Write JSON responses
+- Work with interceptors
+- Handle CORS configuration
+- Match request paths
+- Integrate with exception handling
+
+`WebMvcConfigurer` gives you customization points for some of these areas.
+
+---
+
+# 3. What is an interface in Java?
+
+An interface is a **contract** that a class can implement.
+
+For example:
+
+```java
+public interface Animal {
+
+    void makeSound();
+}
+```
+
+A class can implement it:
+
+```java
+public class Dog implements Animal {
+
+    @Override
+    public void makeSound() {
+        System.out.println("Woof");
+    }
+}
+```
+
+The interface says:
+
+> "A class implementing me must provide the required behavior."
+
+But `WebMvcConfigurer` has an important feature: many of its methods are **default methods**.
+
+---
+
+# 4. What is a default method?
+
+Java interfaces can contain methods with the `default` keyword.
+
+For example:
+
+```java
+public interface MyInterface {
+
+    default void sayHello() {
+        System.out.println("Hello");
+    }
+}
+```
+
+A class can implement the interface without writing `sayHello()`:
+
+```java
+public class MyClass implements MyInterface {
+}
+```
+
+It gets the default implementation.
+
+Or the class can override it:
+
+```java
+public class MyClass implements MyInterface {
+
+    @Override
+    public void sayHello() {
+        System.out.println("Hello from MyClass");
+    }
+}
+```
+
+This is the important idea behind `WebMvcConfigurer`.
+
+---
+
+# 5. WebMvcConfigurer uses default methods
+
+Conceptually, the interface contains methods like:
+
+```java
+public interface WebMvcConfigurer {
+
+    default void addCorsMappings(CorsRegistry registry) {
+    }
+
+    default void addInterceptors(InterceptorRegistry registry) {
+    }
+
+    default void addResourceHandlers(ResourceHandlerRegistry registry) {
+    }
+
+    default void addViewControllers(ViewControllerRegistry registry) {
+    }
+
+    default void configurePathMatch(PathMatchConfigurer configurer) {
+    }
+
+    // Other methods...
+}
+```
+
+This is a **simplified representation**, not the complete source code.
+
+The important part is:
+
+```java
+default
+```
+
+Because the methods have defaults, you don't have to implement all of them.
+
+You can override only the method you need.
+
+---
+
+# 6. Your WebConfig class
+
+A typical configuration class looks like:
+
+```java
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+}
+```
+
+There are two important parts.
+
+## `@Configuration`
+
+```java
+@Configuration
+```
+
+This tells Spring:
+
+> "This class contains configuration for my application."
+
+Spring discovers this class during application startup.
+
+---
+
+## `implements WebMvcConfigurer`
+
+```java
+implements WebMvcConfigurer
+```
+
+This tells Java:
+
+> "My WebConfig class implements the WebMvcConfigurer interface."
+
+It also allows your class to provide Spring MVC customizations.
+
+---
+
+# 7. Why do we use @Override?
+
+Suppose the interface has:
+
+```java
+default void addCorsMappings(CorsRegistry registry) {
+}
+```
+
+Your class can override it:
+
+```java
+@Override
+public void addCorsMappings(CorsRegistry registry) {
+    // your configuration
+}
+```
+
+`@Override` tells Java:
+
+> "I am overriding a method that already exists in the interface."
+
+It also helps the compiler catch mistakes.
+
+For example, if you accidentally write:
+
+```java
+@Override
+public void addCorsMapping(CorsRegistry registry) {
+}
+```
+
+instead of:
+
+```java
+addCorsMappings
+```
+
+Java can tell you that you are not actually overriding the interface method.
+
+---
+
+# 8. The CORS method
+
+One commonly used method is:
+
+```java
+addCorsMappings(CorsRegistry registry)
+```
+
+For example:
+
+```java
+@Override
+public void addCorsMappings(CorsRegistry registry) {
+
+    registry.addMapping("/**")
+            .allowedOrigins("https://example.com")
+            .allowedMethods(
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "DELETE",
+                    "OPTIONS"
+            )
+            .allowedHeaders("*");
+}
+```
+
+This means:
+
+> "Spring MVC, here are my CORS rules."
+
+---
+
+# 9. What is CorsRegistry?
+
+Look at:
+
+```java
+public void addCorsMappings(CorsRegistry registry)
+```
+
+The parameter:
+
+```java
+CorsRegistry registry
+```
+
+is an object supplied by Spring.
+
+Think of it as a **place where you register your CORS rules**.
+
+You can tell it:
+
+```text
+Which URLs?
+Which origins?
+Which methods?
+Which headers?
+```
+
+For example:
+
+```java
+registry.addMapping("/**")
+```
+
+means:
+
+> Apply this CORS configuration to all matching paths.
+
+Then:
+
+```java
+.allowedOrigins("https://example.com")
+```
+
+means:
+
+> Allow requests from this origin.
+
+Then:
+
+```java
+.allowedMethods("GET", "POST")
+```
+
+means:
+
+> Allow these HTTP methods.
+
+---
+
+# 10. What does `"/**"` mean?
+
+This:
+
+```java
+"/**"
+```
+
+is a path pattern.
+
+It essentially means:
+
+> Match all paths.
+
+So it can cover paths such as:
+
+```text
+/api/users
+/api/units
+/api/payments
+/api/expenses
+```
+
+You could also use:
+
+```java
+registry.addMapping("/api/**")
+```
+
+which means:
+
+> Apply this CORS configuration to paths under `/api/`.
+
+---
+
+# 11. Another WebMvcConfigurer method: interceptors
+
+You can customize interceptors:
+
+```java
+@Override
+public void addInterceptors(InterceptorRegistry registry) {
+
+    registry.addInterceptor(myInterceptor);
+}
+```
+
+An interceptor can run around requests.
+
+Conceptually:
+
+```text
+Request
+   |
+   ↓
+Interceptor
+   |
+   ↓
+Controller
+   |
+   ↓
+Response
+```
+
+This can be useful for request-related processing, logging, and other cross-cutting behavior.
+
+---
+
+# 12. Resource handlers
+
+Another customization method is:
+
+```java
+@Override
+public void addResourceHandlers(ResourceHandlerRegistry registry) {
+
+    registry.addResourceHandler("/images/**")
+            .addResourceLocations("classpath:/images/");
+}
+```
+
+This can tell Spring MVC how to serve certain resources.
+
+Conceptually:
+
+```text
+Browser requests:
+
+/images/logo.png
+
+        ↓
+
+Spring MVC
+
+        ↓
+
+Look in:
+
+classpath:/images/
+```
+
+---
+
+# 13. View controllers
+
+You can also configure simple view mappings:
+
+```java
+@Override
+public void addViewControllers(ViewControllerRegistry registry) {
+
+    registry.addViewController("/home")
+            .setViewName("home");
+}
+```
+
+This can map a URL directly to a view without requiring a full controller method.
+
+Conceptually:
+
+```text
+/home
+  ↓
+"home" view
+```
+
+---
+
+# 14. Path matching
+
+Another customization point is:
+
+```java
+@Override
+public void configurePathMatch(PathMatchConfigurer configurer) {
+
+    // customize path matching
+}
+```
+
+This allows customization of how Spring MVC matches incoming URLs to controller mappings.
+
+For example:
+
+```text
+Incoming request:
+
+GET /api/v1/units/123
+
+        ↓
+
+Spring MVC determines:
+
+Which controller method handles this?
+```
+
+Path matching configuration can influence that behavior.
+
+---
+
+# 15. Why doesn't Spring make you configure everything?
+
+Because Spring already provides sensible defaults.
+
+Imagine having to manually configure:
+
+```text
+How to parse JSON?
+How to map URLs?
+How to find controllers?
+How to handle GET?
+How to handle POST?
+How to handle PUT?
+How to handle DELETE?
+How to serve resources?
+How to configure CORS?
+How to match paths?
+...
+```
+
+That would be a lot of work.
+
+Instead:
+
+```text
+Spring MVC
+    |
+    ├── Default behavior
+    |
+    └── Customization points
+             ↑
+      WebMvcConfigurer
+```
+
+You only customize what you actually need.
+
+---
+
+# 16. This is why your class can be small
+
+For example:
+
+```java
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+
+        registry.addMapping("/**")
+                .allowedOrigins(
+                    "https://example.com"
+                )
+                .allowedMethods(
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "DELETE",
+                    "OPTIONS"
+                )
+                .allowedHeaders("*");
+    }
+}
+```
+
+You don't need to implement:
+
+```text
+addInterceptors()
+addResourceHandlers()
+addViewControllers()
+configurePathMatch()
+...
+```
+
+because you aren't customizing those things.
+
+Spring keeps its normal behavior for them.
+
+---
+
+# 17. A useful analogy
+
+Imagine Spring MVC is a factory that already produces a standard product.
+
+```text
+Spring MVC
+    ↓
+Standard/default behavior
+```
+
+`WebMvcConfigurer` is like a customization menu:
+
+```text
+WebMvcConfigurer
+    |
+    ├── Customize CORS
+    ├── Customize interceptors
+    ├── Customize resources
+    ├── Customize path matching
+    └── Other customization
+```
+
+You don't rebuild the entire factory.
+
+You simply say:
+
+> "Keep everything standard, but change this particular part."
+
+---
+
+# 18. WebMvcConfigurer does NOT mean "build MVC"
+
+This distinction is important.
+
+When you write:
+
+```java
+implements WebMvcConfigurer
+```
+
+you are **not saying**:
+
+> "I am creating Spring MVC."
+
+You're saying:
+
+> "I want to customize Spring MVC."
+
+Spring MVC already exists.
+
+Your configuration class adds your application's preferences.
+
+---
+
+# 19. What happens when the application starts?
+
+A simplified startup process looks like:
+
+```text
+Spring Boot starts
+       |
+       ↓
+Spring creates application context
+       |
+       ↓
+Spring discovers @Configuration classes
+       |
+       ↓
+Spring finds WebConfig
+       |
+       ↓
+Spring sees:
+implements WebMvcConfigurer
+       |
+       ↓
+Spring uses the configuration methods
+       |
+       ↓
+MVC is configured
+       |
+       ↓
+Application starts
+```
+
+So your `WebConfig` is primarily part of **application configuration/setup**.
+
+It isn't something that your frontend directly calls.
+
+---
+
+# 20. What happens when a request arrives?
+
+Suppose:
+
+```text
+Frontend
+   |
+   | GET /api/v1/units
+   ↓
+Spring Boot
+```
+
+The configuration established during startup is then used by Spring MVC while handling requests.
+
+A simplified picture:
+
+```text
+Application startup
+       |
+       ↓
+WebMvcConfigurer
+       |
+       ↓
+MVC configuration
+       |
+       ↓
+Application running
+       |
+       ↓
+HTTP request
+       |
+       ↓
+Spring MVC uses that configuration
+       |
+       ↓
+Controller
+```
+
+---
+
+# 21. WebMvcConfigurer and CORS
+
+Your CORS configuration:
+
+```java
+@Override
+public void addCorsMappings(CorsRegistry registry) {
+
+    registry.addMapping("/**")
+            .allowedOrigins("https://example.com")
+            .allowedMethods(
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "DELETE",
+                    "OPTIONS"
+            )
+            .allowedHeaders("*");
+}
+```
+
+can be mentally translated to:
+
+```text
+Spring MVC:
+
+For matching paths:
+
+    Allow origin:
+        https://example.com
+
+    Allow methods:
+        GET
+        POST
+        PUT
+        DELETE
+        OPTIONS
+
+    Allow request headers:
+        any
+```
+
+---
+
+# 22. Is WebMvcConfigurer the same thing as CORS?
+
+No.
+
+This distinction is very important.
+
+```text
+WebMvcConfigurer
+        |
+        ↓
+A way to customize Spring MVC
+```
+
+CORS is only **one of the things** you can customize through it.
+
+Think:
+
+```text
+WebMvcConfigurer
+       |
+       ├── CORS
+       ├── Interceptors
+       ├── Resources
+       ├── Views
+       ├── Path matching
+       └── Other MVC configuration
+```
+
+So:
+
+> **WebMvcConfigurer is the customization interface.**
+
+> **CORS is one particular customization.**
+
+---
+
+# 23. Why is it called "Configurer"?
+
+The name gives you a useful hint:
+
+```text
+Web
+MVC
+Configurer
+```
+
+Meaning roughly:
+
+```text
+A configurer for Web MVC
+```
+
+It exists to let you **configure/customize Spring MVC**.
+
+---
+
+# 24. One more Java concept: implements
+
+When you write:
+
+```java
+public class WebConfig implements WebMvcConfigurer
+```
+
+you can read it as:
+
+> "WebConfig agrees to use the WebMvcConfigurer contract."
+
+Then you can override the methods you care about.
+
+For example:
+
+```java
+@Override
+public void addCorsMappings(CorsRegistry registry) {
+    // customization
+}
+```
+
+---
+
+# 25. The whole thing in one picture
+
+```text
+                    Spring Boot
+                        |
+                        ↓
+                   Spring MVC
+                        |
+              Default MVC behavior
+                        |
+                        |
+             WebMvcConfigurer
+                        |
+             "Customize this..."
+                        |
+        ┌───────────────┼────────────────┐
+        ↓               ↓                ↓
+       CORS        Interceptors      Resources
+        |
+        ↓
+addCorsMappings()
+        |
+        ↓
+CorsRegistry
+        |
+        ├── addMapping()
+        ├── allowedOrigins()
+        ├── allowedMethods()
+        └── allowedHeaders()
+```
+
+---
+
+# 26. Key things to remember
+
+### `WebMvcConfigurer`
+
+A Spring interface used to **customize Spring MVC**.
+
+### `implements`
+
+```java
+implements WebMvcConfigurer
+```
+
+means your class implements the interface and can provide MVC customizations.
+
+### `@Override`
+
+```java
+@Override
+```
+
+means you're overriding a method provided by the interface.
+
+### `default`
+
+Many methods in the interface have default implementations, so you don't need to implement everything.
+
+### `addCorsMappings()`
+
+A customization method specifically for configuring CORS.
+
+### `CorsRegistry`
+
+The object you use to register CORS rules.
+
+---
+
+# 27. The simplest mental model
+
+Remember this:
+
+```text
+Spring MVC
+    ↓
+Already works with defaults
+    ↓
+WebMvcConfigurer
+    ↓
+"I want to customize something."
+    ↓
+Override only the method you need
+```
+
+For your CORS case:
+
+```text
+WebMvcConfigurer
+       ↓
+addCorsMappings()
+       ↓
+CorsRegistry
+       ↓
+CORS rules
+       ↓
+Spring MVC uses those rules
+       ↓
+Browser enforces the cross-origin policy
+```
+
+## Final takeaway
+
+The most important sentence is:
+
+> **`WebMvcConfigurer` is a Spring interface that lets your application customize Spring MVC without replacing Spring MVC's built-in behavior.**
