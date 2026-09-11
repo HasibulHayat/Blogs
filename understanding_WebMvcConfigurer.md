@@ -540,7 +540,9 @@ It isn't something that your frontend directly calls.
 <br>
 
 
-# 15. The whole thing in one picture
+# 14. The whole thing in one picture
+
+<br>
 
 ```text
                     Spring Boot
@@ -575,7 +577,7 @@ CorsRegistry
 <br>
 
 
-# 16. Key things to remember
+# 15. Key things to remember
 
 <br>
 
@@ -615,7 +617,7 @@ The object you use to register CORS rules.
 <br>
 
 
-# 27. The simplest mental model
+# 16. The simplest mental model
 
 <br>
 
