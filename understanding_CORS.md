@@ -28,6 +28,17 @@ Browsers have a security rule around cross-origin requests. CORS is the mechanis
 
 > ### CORS is enforced by browser
 
+So anyone can send a request to a publicly reachable API using Postman, curl, Python, etc. CORS does not stop them.
+
+But they still need to pass your backend security:
+
+So:
+
+- CORS → protects browser-based cross-origin access
+- Authentication/authorization → protects the API itself
+
+That's why CORS should never be your API's primary security mechanism.
+
 <br>
 <br>
 
