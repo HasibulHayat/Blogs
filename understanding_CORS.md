@@ -1,3 +1,5 @@
+<br>
+
 # Understanding CORS (Cross-Origin Resource Sharing)
 
 <br>
