@@ -34,11 +34,15 @@ You are normally **not building Spring MVC yourself** when you use this interfac
 
 You are saying:
 
-> "Spring, keep your normal MVC behavior, but I want to customize these particular parts."
+> ### "Spring, keep your normal MVC behavior, but I want to customize these particular parts."
 
----
+<br>
+<br>
+
 
 # 2. First: what is Spring MVC?
+
+<br>
 
 Spring MVC is the part of Spring that handles web requests.
 
@@ -83,9 +87,13 @@ Spring MVC already knows how to do many things, such as:
 
 `WebMvcConfigurer` gives you customization points for some of these areas.
 
----
+<br>
+<br>
+
 
 # 3. What is an interface in Java?
+
+<br>
 
 An interface is a **contract** that a class can implement.
 
@@ -112,11 +120,13 @@ public class Dog implements Animal {
 
 The interface says:
 
-> "A class implementing me must provide the required behavior."
+> ### "A class implementing me must provide the required behavior."
 
-But `WebMvcConfigurer` has an important feature: many of its methods are **default methods**.
+> ### But `WebMvcConfigurer` has an important feature: many of its methods are **default methods**.
 
----
+<br>
+<br>
+
 
 # 4. What is a default method?
 
