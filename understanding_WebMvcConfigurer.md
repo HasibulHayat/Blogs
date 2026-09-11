@@ -130,6 +130,8 @@ The interface says:
 
 # 4. What is a default method?
 
+<br>
+
 Java interfaces can contain methods with the `default` keyword.
 
 For example:
@@ -166,9 +168,13 @@ public class MyClass implements MyInterface {
 
 This is the important idea behind `WebMvcConfigurer`.
 
----
+<br>
+<br>
+
 
 # 5. WebMvcConfigurer uses default methods
+
+<br>
 
 Conceptually, the interface contains methods like:
 
@@ -206,9 +212,13 @@ Because the methods have defaults, you don't have to implement all of them.
 
 You can override only the method you need.
 
----
+<br>
+<br>
+
 
 # 6. Your WebConfig class
+
+<br>
 
 A typical configuration class looks like:
 
