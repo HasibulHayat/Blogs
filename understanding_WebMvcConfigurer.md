@@ -242,7 +242,6 @@ This tells Spring:
 
 Spring discovers this class during application startup.
 
----
 
 ## `implements WebMvcConfigurer`
 
@@ -256,51 +255,13 @@ This tells Java:
 
 It also allows your class to provide Spring MVC customizations.
 
----
+<br>
+<br>
 
-# 7. Why do we use @Override?
 
-Suppose the interface has:
+# 7. The CORS method
 
-```java
-default void addCorsMappings(CorsRegistry registry) {
-}
-```
-
-Your class can override it:
-
-```java
-@Override
-public void addCorsMappings(CorsRegistry registry) {
-    // your configuration
-}
-```
-
-`@Override` tells Java:
-
-> "I am overriding a method that already exists in the interface."
-
-It also helps the compiler catch mistakes.
-
-For example, if you accidentally write:
-
-```java
-@Override
-public void addCorsMapping(CorsRegistry registry) {
-}
-```
-
-instead of:
-
-```java
-addCorsMappings
-```
-
-Java can tell you that you are not actually overriding the interface method.
-
----
-
-# 8. The CORS method
+<br>
 
 One commonly used method is:
 
@@ -331,9 +292,13 @@ This means:
 
 > "Spring MVC, here are my CORS rules."
 
----
+<br>
+<br>
 
-# 9. What is CorsRegistry?
+
+# 8. What is CorsRegistry?
+
+<br>
 
 Look at:
 
@@ -390,44 +355,13 @@ means:
 
 > Allow these HTTP methods.
 
----
+<br>
+<br>
 
-# 10. What does `"/**"` mean?
 
-This:
+# 9. Another WebMvcConfigurer method: interceptors
 
-```java
-"/**"
-```
-
-is a path pattern.
-
-It essentially means:
-
-> Match all paths.
-
-So it can cover paths such as:
-
-```text
-/api/users
-/api/units
-/api/payments
-/api/expenses
-```
-
-You could also use:
-
-```java
-registry.addMapping("/api/**")
-```
-
-which means:
-
-> Apply this CORS configuration to paths under `/api/`.
-
----
-
-# 11. Another WebMvcConfigurer method: interceptors
+<br>
 
 You can customize interceptors:
 
@@ -458,9 +392,13 @@ Response
 
 This can be useful for request-related processing, logging, and other cross-cutting behavior.
 
----
+<br>
+<br>
 
-# 12. Resource handlers
+
+# 10. Resource handlers
+
+<br>
 
 Another customization method is:
 
@@ -493,9 +431,13 @@ Look in:
 classpath:/images/
 ```
 
----
+<br>
+<br>
 
-# 13. View controllers
+
+# 11. View controllers
+
+<br>
 
 You can also configure simple view mappings:
 
@@ -518,9 +460,13 @@ Conceptually:
 "home" view
 ```
 
----
+<br>
+<br>
 
-# 14. Path matching
+
+# 12. Path matching
+
+<br>
 
 Another customization point is:
 
@@ -550,7 +496,9 @@ Which controller method handles this?
 
 Path matching configuration can influence that behavior.
 
----
+<br>
+<br>
+
 
 # 15. Why doesn't Spring make you configure everything?
 
