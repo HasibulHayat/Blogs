@@ -20,9 +20,10 @@ Your frontend JavaScript wants to call:
 fetch("https://api.mywebsite.com/users");
 ```
 
-The frontend and backend have different **origins**.
+But the frontend and backend have different **origins**.
 
 Browsers have a security rule around cross-origin requests. CORS is the mechanism that lets a server tell the browser which other origins are allowed to access its resources.
+> CORS is enforced by browser
 
 ---
 
