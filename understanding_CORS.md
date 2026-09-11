@@ -1,5 +1,7 @@
 # Understanding CORS (Cross-Origin Resource Sharing)
 
+<br>
+
 ## 1. What problem does CORS solve?
 
 Imagine you have a frontend:
@@ -25,7 +27,8 @@ But the frontend and backend have different **origins**.
 Browsers have a security rule around cross-origin requests. CORS is the mechanism that lets a server tell the browser which other origins are allowed to access its resources.
 > CORS is enforced by browser
 
----
+<br>
+<br>
 
 ## 2. What is an origin?
 
