@@ -651,6 +651,8 @@ Spring MVC uses those rules
 Browser enforces the cross-origin policy
 ```
 
+<br>
+
 ## Final takeaway
 
 The most important sentence is:
