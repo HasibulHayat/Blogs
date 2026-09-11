@@ -96,137 +96,9 @@ https://example.com:8080
 <br>
 
 
-## 3. Why does the browser care?
+## 3. CORS is a browser security mechanism
 
 <br>
-
-Suppose you are logged into your bank:
-
-```text
-https://mybank.com
-```
-
-Now imagine you visit:
-
-```text
-https://evil.com
-```
-
-That website contains JavaScript that tries to access your bank:
-
-```javascript
-fetch("https://mybank.com/account");
-```
-
-Without browser protections, malicious websites could potentially make requests to other websites and read sensitive information.
-
-Browsers therefore enforce the **Same-Origin Policy**.
-
-Very roughly:
-
-> A webpage from one origin cannot freely read resources from another origin.
-
-This protection happens in the browser.
-
----
-
-## 4. How can a frontend call a different backend?
-
-Your backend can explicitly tell the browser:
-
-> "I trust requests from this origin."
-
-That is what CORS allows you to configure.
-
-CORS stands for:
-
-# Cross-Origin Resource Sharing
-
-Break the name apart:
-
-- **Cross-Origin** — the request is coming from another origin.
-- **Resource Sharing** — the server says that another origin is allowed to access its resources.
-
----
-
-## 5. A simple CORS example
-
-Suppose:
-
-```text
-Frontend:
-https://app.example.com
-
-Backend:
-https://api.example.com
-```
-
-The frontend makes a request.
-
-The browser may send:
-
-```http
-GET /users
-Origin: https://app.example.com
-```
-
-The backend can respond:
-
-```http
-Access-Control-Allow-Origin: https://app.example.com
-```
-
-The browser sees that the requested origin is allowed and lets the frontend JavaScript access the response.
-
-Conceptually:
-
-```text
-Frontend origin:
-https://app.example.com
-
-Server allows:
-https://app.example.com
-
-        ↓
-
-       ✅ Allowed
-```
-
----
-
-## 6. What if the server does not allow the origin?
-
-Suppose a request comes from:
-
-```text
-https://evil.com
-```
-
-but the server only allows:
-
-```text
-https://app.example.com
-```
-
-The browser compares:
-
-```text
-Request came from:
-https://evil.com
-
-Server allows:
-https://app.example.com
-```
-
-They do not match.
-
-The browser prevents the JavaScript code from accessing the response.
-
-You will typically see a **CORS error** in the browser console.
-
----
-
-## 7. CORS is a browser security mechanism
 
 This is one of the most important things to understand.
 
@@ -260,9 +132,13 @@ Authorization
 "What are you allowed to do?"
 ```
 
----
+<br>
+<br>
 
-## 8. A real request
+
+## 4. A real request
+
+<br>
 
 Suppose JavaScript does:
 
@@ -302,7 +178,9 @@ Origin matches allowed origin
 JavaScript can access the response
 ```
 
----
+<br>
+<br>
+
 
 # 9. Understanding a Spring Boot CORS configuration
 
