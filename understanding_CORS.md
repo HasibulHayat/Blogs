@@ -4,6 +4,8 @@
 
 ## 1. What problem does CORS solve?
 
+<br>
+
 Imagine you have a frontend:
 
 ```text
@@ -42,7 +44,10 @@ That's why CORS should never be your API's primary security mechanism.
 <br>
 <br>
 
+
 ## 2. What is an origin?
+
+<br>
 
 An **origin** is basically:
 
@@ -87,9 +92,13 @@ https://example.com:443
 https://example.com:8080
 ```
 
----
+<br>
+<br>
+
 
 ## 3. Why does the browser care?
+
+<br>
 
 Suppose you are logged into your bank:
 
