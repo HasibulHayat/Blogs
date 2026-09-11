@@ -1,4 +1,8 @@
+<br>
+    
 # WebMvcConfigurer in Spring Boot — Detailed Beginner Guide
+
+<br>
 
 ## 1. What is WebMvcConfigurer?
 
