@@ -103,7 +103,7 @@ UserAuth
 <br>
 
 
-## 3. Why LAZY Is Usually Preferred
+## Why LAZY Is Usually Preferred
 
 Imagine your `UserProfile` eventually has:
 
@@ -145,45 +145,9 @@ gets loaded first.
 
 Only when you actually access a relationship does Hibernate load that related data.
 
----
+<br>
 
-# 4. In Your Specific Case
-
-Your application has authentication information in `UserAuth` and personal/profile information in `UserProfile`.
-
-For example:
-
-```text
-UserAuth
- ├── email
- ├── passwordHash
- ├── accountStatus
- ├── isLocked
- └── tokenVersion
-
-UserProfile
- ├── firstName
- ├── middleName
- ├── lastName
- ├── phone
- └── userAuth
-```
-
-So:
-
-```java
-@OneToOne(fetch = FetchType.LAZY, optional = false)
-```
-
-means:
-
-> "When I load a profile, don't automatically load `UserAuth` unless I actually need it."
-
-This is a sensible approach.
-
----
-
-# 5. LAZY Does NOT Mean "Never Load"
+## LAZY Does NOT Mean "Never Load"
 
 This is very important.
 
@@ -223,9 +187,9 @@ UserAuth    ✅ loaded
 
 So LAZY means **load later when needed**, not **never load**.
 
----
+<br>
 
-# 6. The Common LAZY Problem: LazyInitializationException
+## The Common LAZY Problem: LazyInitializationException
 
 One common issue with LAZY loading is:
 
