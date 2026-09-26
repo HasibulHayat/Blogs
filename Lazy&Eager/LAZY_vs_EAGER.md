@@ -16,7 +16,7 @@ Think of it like this:
 
 <br>
 
-## Example
+## Example Scenario
 
 ```java
 @OneToOne(fetch = FetchType.LAZY, optional = false)
@@ -24,7 +24,7 @@ Think of it like this:
 private UserAuth userAuth;
 ```
 
-Here, `UserProfile` has a relationship with `UserAuth`:
+Let's say, `UserProfile` has a relationship with `UserAuth`:
 
 ```text
 UserProfile
@@ -34,9 +34,9 @@ UserProfile
 UserAuth
 ```
 
----
+<br>
 
-# 1. LAZY Loading
+### 1. LAZY Loading
 
 ```java
 fetch = FetchType.LAZY
@@ -72,18 +72,9 @@ Hibernate realizes that you actually need `UserAuth` and loads it:
 SELECT * FROM user_auth WHERE id = ?
 ```
 
-### Easy analogy
+<br>
 
-Imagine you order a meal.
-
-**LAZY:**
-
-> "Bring me the main dish first.  
-> If I ask for dessert later, bring dessert then."
-
----
-
-# 2. EAGER Loading
+### 2. EAGER Loading
 
 If you use:
 
@@ -109,15 +100,10 @@ UserProfile
 UserAuth
 ```
 
-### Easy analogy
+<br>
 
-**EAGER:**
 
-> "Bring me the main dish AND dessert immediately, even if I might not eat the dessert."
-
----
-
-# 3. Why LAZY Is Usually Preferred
+## 3. Why LAZY Is Usually Preferred
 
 Imagine your `UserProfile` eventually has:
 
