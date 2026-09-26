@@ -1,4 +1,9 @@
+<br>
+
 # JPA Fetch Type — LAZY vs EAGER
+
+<br>
+<br>
 
 ## The Basic Idea
 
@@ -9,7 +14,7 @@ Think of it like this:
 > **LAZY = "Give it to me only when I ask."**  
 > **EAGER = "Give it to me immediately."**
 
----
+<br>
 
 ## Example
 
