@@ -3,6 +3,7 @@
 # Understanding CORS (Cross-Origin Resource Sharing)
 
 <br>
+<br>
 
 ## 1. What problem does CORS solve?
 
