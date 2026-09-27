@@ -1,7 +1,11 @@
-# Spring Boot Exception Handling — Part A
-## Foundation
+<br>
 
-## 1. Why Do We Need Exception Handling?
+# Spring Boot Exception Handling 
+
+<br>
+<br>
+
+## Why Do We Need Exception Handling?
 
 In a Spring Boot application, something can go wrong at many levels:
 
@@ -36,9 +40,9 @@ Example:
 }
 ```
 
----
+<br>
 
-## 2. What Happens When an Exception Is Thrown?
+## What Happens When an Exception Is Thrown?
 
 Suppose the service contains:
 
@@ -73,9 +77,9 @@ HTTP Response
 
 The exception can travel upward until something handles it.
 
----
+<br>
 
-## 3. Why Not Handle Every Exception in Every Controller?
+## Why Not Handle Every Exception in Every Controller?
 
 You could write:
 
@@ -108,9 +112,9 @@ Problems:
 
 Spring gives us a better approach: centralized exception handling.
 
----
+<br>
 
-## 4. Global Exception Handling
+## Global Exception Handling
 
 Spring Boot allows us to create one central place for handling exceptions.
 
@@ -133,9 +137,9 @@ public class GlobalExceptionHandler {
 }
 ```
 
----
+<br>
 
-## 5. `@ExceptionHandler`
+## `@ExceptionHandler`
 
 Inside the global handler, we use:
 
@@ -160,9 +164,11 @@ This means:
 
 > Whenever a `UserNotFoundException` reaches the global handler, run this method.
 
----
+<br>
 
-## 6. Complete Simple Example
+## Complete Simple Example
+
+<br>
 
 ### Custom Exception
 
@@ -235,9 +241,9 @@ GlobalExceptionHandler
 HTTP 404
 ```
 
----
+<br>
 
-## 7. Why Use `ResponseEntity`?
+## Why Use `ResponseEntity`?
 
 `ResponseEntity` lets us control the HTTP response.
 
@@ -260,9 +266,9 @@ HTTP Status: 404 Not Found
 Body: User not found
 ```
 
----
+<br>
 
-## 8. Common HTTP Status Codes
+## Common HTTP Status Codes
 
 | Status | Meaning | Typical Example |
 |---|---|---|
@@ -287,9 +293,9 @@ Remember:
 500 → Unexpected server-side problem
 ```
 
----
+<br>
 
-## 9. Different Exceptions Can Have Different HTTP Statuses
+## Different Exceptions Can Have Different HTTP Statuses
 
 Example:
 
@@ -329,9 +335,9 @@ EmailAlreadyExistsException
 409
 ```
 
----
+<br>
 
-## 10. Generic Exception Handler
+## Generic Exception Handler
 
 We can also create a fallback handler:
 
@@ -370,9 +376,9 @@ Generic Exception handler
 500
 ```
 
----
+<br>
 
-## 11. Why Have a Generic Handler?
+## Why Have a Generic Handler?
 
 It gives the application a safety net.
 
@@ -396,7 +402,7 @@ Prefer:
 
 Detailed information should normally be logged on the server.
 
----
+<br>
 
 ## 12. Never Expose Stack Traces to the Client
 
