@@ -1,0 +1,1303 @@
+# Java Exceptions — Phase 2 Full Notes
+
+## Overview
+
+Phase 2 focuses on handling and controlling exceptions in Java.
+
+Topics:
+1. `try`
+2. `catch`
+3. `finally`
+4. `throw`
+5. `throws`
+6. Multiple `catch` blocks
+7. Specific vs generic exception handling
+8. Exception propagation
+9. Creating custom exceptions
+10. `extends RuntimeException`
+11. Custom exception constructors
+12. Rethrowing exceptions
+13. Wrapping exceptions
+14. Preserving the original cause
+15. How these concepts fit into a Spring Boot backend
+
+---
+
+# 1. `try`
+
+A `try` block contains code that might throw an exception.
+
+```java
+try {
+    int result = 10 / number;
+}
+```
+
+If an exception happens inside the `try` block, Java looks for a matching `catch` block.
+
+Example:
+
+```java
+try {
+    int result = 10 / 0;
+}
+```
+
+This produces an `ArithmeticException`.
+
+Typical flow:
+
+```text
+try
+ ↓
+exception happens
+ ↓
+matching catch
+ ↓
+handle the problem
+```
+
+---
+
+# 2. `catch`
+
+A `catch` block handles an exception thrown by the corresponding `try` block.
+
+```java
+try {
+    int result = 10 / 0;
+} catch (ArithmeticException e) {
+    System.out.println("Cannot divide by zero");
+}
+```
+
+The variable `e` contains the exception object.
+
+Useful methods include:
+
+```java
+e.getMessage();
+e.printStackTrace();
+```
+
+---
+
+# 3. `finally`
+
+`finally` is used for code that should normally run whether an exception happens or not.
+
+```java
+try {
+    System.out.println("Processing...");
+} catch (Exception e) {
+    System.out.println("Something went wrong");
+} finally {
+    System.out.println("Cleanup");
+}
+```
+
+Typical flow:
+
+```text
+try
+ ↓
+catch (if exception)
+ ↓
+finally
+```
+
+`finally` is commonly associated with cleanup, such as releasing resources.
+
+Modern Java often uses try-with-resources for resource cleanup, so `finally` is not always needed for resources.
+
+`finally` normally executes, but there are unusual cases where the JVM terminates before it can run.
+
+---
+
+# 4. `throw`
+
+`throw` explicitly raises an exception.
+
+```java
+throw new IllegalArgumentException("Email cannot be null");
+```
+
+It means:
+
+> A problem has occurred. Raise this exception.
+
+Example:
+
+```java
+public void registerUser(String email) {
+
+    if (email == null || email.isBlank()) {
+        throw new IllegalArgumentException("Email is required");
+    }
+
+    // continue registration
+}
+```
+
+If the condition is true, execution stops at the `throw`.
+
+---
+
+# 5. `throws`
+
+`throws` is used in a method declaration to say:
+
+> This method may pass an exception to its caller.
+
+Example:
+
+```java
+public void readFile() throws IOException {
+    // file operation
+}
+```
+
+`throws` does not itself throw the exception. It declares that the method may pass it upward.
+
+## `throw` vs `throws`
+
+### `throw`
+
+Actually raises an exception:
+
+```java
+throw new IllegalArgumentException("Invalid email");
+```
+
+### `throws`
+
+Declares that a method may pass an exception to its caller:
+
+```java
+public void readFile() throws IOException {
+}
+```
+
+Mental model:
+
+```text
+throw  = "Raise this problem now."
+
+throws = "This method may pass this problem upward."
+```
+
+Runtime exceptions do not normally need to be declared with `throws`.
+
+---
+
+# 6. Multiple `catch` Blocks
+
+A `try` block can have multiple `catch` blocks.
+
+```java
+try {
+    int number = Integer.parseInt(input);
+    int result = 100 / number;
+
+} catch (NumberFormatException e) {
+
+    System.out.println("Invalid number");
+
+} catch (ArithmeticException e) {
+
+    System.out.println("Cannot divide by zero");
+}
+```
+
+If `input` is `"abc"`, a `NumberFormatException` occurs.
+
+If `input` is `"0"`, an `ArithmeticException` occurs.
+
+## Catch specific exceptions before generic exceptions
+
+Bad:
+
+```java
+try {
+    // code
+} catch (Exception e) {
+
+} catch (ArithmeticException e) {
+
+}
+```
+
+This does not work because `Exception` already covers `ArithmeticException`.
+
+Correct:
+
+```java
+try {
+    // code
+} catch (ArithmeticException e) {
+
+} catch (Exception e) {
+
+}
+```
+
+Think:
+
+```text
+Specific
+   ↓
+More general
+```
+
+---
+
+# 7. Multi-catch
+
+If several exception types should be handled exactly the same way, Java supports multi-catch.
+
+```java
+try {
+    // code
+} catch (NumberFormatException | ArithmeticException e) {
+
+    System.out.println("Invalid numeric operation");
+}
+```
+
+Use multi-catch when the handling is genuinely the same.
+
+---
+
+# 8. Specific vs Generic Exceptions
+
+Prefer specific exceptions when you know what you are handling.
+
+Better:
+
+```java
+catch (NumberFormatException e) {
+    // handle invalid number
+}
+```
+
+rather than:
+
+```java
+catch (Exception e) {
+    // something happened
+}
+```
+
+Specific exceptions communicate what happened.
+
+Examples:
+
+```text
+NumberFormatException
+UserNotFoundException
+EmailAlreadyExistsException
+InvalidInvitationTokenException
+```
+
+are more informative than:
+
+```text
+Exception
+```
+
+## Don't catch everything
+
+Avoid:
+
+```java
+try {
+    processUser();
+} catch (Exception e) {
+    ...
+}
+```
+
+unless the current layer genuinely knows how to handle all those possible exceptions.
+
+Catching everything can:
+- hide programming errors
+- make debugging harder
+- accidentally handle problems that should propagate
+- make application behavior unclear
+
+Ask:
+
+> Does this layer actually know how to handle this exception?
+
+If yes, catch it.
+
+If no, let it propagate.
+
+---
+
+# 9. Exception Propagation
+
+Exception propagation means an exception moves upward through the call stack when the current method does not handle it.
+
+Imagine:
+
+```text
+Controller
+    ↓
+Service
+    ↓
+Repository
+```
+
+If the repository throws an exception and doesn't catch it:
+
+```text
+Repository
+    ↓
+exception
+    ↓
+Service
+    ↓
+Controller
+```
+
+The exception keeps moving upward until something handles it.
+
+## Example
+
+Repository:
+
+```java
+public void repositoryMethod() {
+    throw new RuntimeException("Something went wrong");
+}
+```
+
+Service:
+
+```java
+public void serviceMethod() {
+    repositoryMethod();
+}
+```
+
+Controller:
+
+```java
+public void controllerMethod() {
+    serviceMethod();
+}
+```
+
+There is no `try-catch`.
+
+The flow is:
+
+```text
+repositoryMethod()
+       ↓
+RuntimeException
+       ↓
+serviceMethod()
+       ↓
+controllerMethod()
+       ↓
+higher-level handler
+```
+
+This is exception propagation.
+
+---
+
+# 10. Why Propagation Is Useful
+
+You do not need to handle an exception exactly where it happens.
+
+Sometimes lower-level code knows:
+
+> Something went wrong.
+
+But a higher-level component knows:
+
+> What should we do about it?
+
+This separation is very useful in backend architecture.
+
+---
+
+# 11. Woodland Backend Example
+
+Suppose:
+
+```java
+public UserResponse getUser(UUID id) {
+
+    User user = userRepository.findById(id)
+        .orElseThrow(() ->
+            new UserNotFoundException("User not found")
+        );
+
+    return mapToResponse(user);
+}
+```
+
+The service knows:
+
+> The requested user doesn't exist.
+
+But the service does not necessarily need to decide how that becomes an HTTP response.
+
+A centralized exception handler can make that decision.
+
+Flow:
+
+```text
+HTTP Request
+     ↓
+Controller
+     ↓
+Service
+     ↓
+UserNotFoundException
+     ↓
+propagates upward
+     ↓
+Global Exception Handler
+     ↓
+HTTP 404
+```
+
+This keeps responsibilities separated.
+
+---
+
+# 12. Creating Custom Exceptions
+
+A custom exception is an exception class created specifically for your application.
+
+```java
+public class UserNotFoundException extends RuntimeException {
+
+    public UserNotFoundException(String message) {
+        super(message);
+    }
+}
+```
+
+Then:
+
+```java
+throw new UserNotFoundException("User not found");
+```
+
+This is more meaningful than:
+
+```java
+throw new RuntimeException("User not found");
+```
+
+---
+
+# 13. Why Create Custom Exceptions?
+
+Your application might have:
+
+```text
+UserNotFoundException
+ClientNotFoundException
+ProductNotFoundException
+RoleNotFoundException
+EmailAlreadyExistsException
+PermissionDeniedException
+InvalidInvitationTokenException
+```
+
+Each exception communicates a specific meaning.
+
+The application can also handle them differently.
+
+For example:
+
+```java
+@ExceptionHandler(UserNotFoundException.class)
+```
+
+can specifically handle user-not-found situations.
+
+---
+
+# 14. Why `extends RuntimeException`?
+
+When we write:
+
+```java
+public class UserNotFoundException extends RuntimeException
+```
+
+we are saying:
+
+> UserNotFoundException is a type of RuntimeException.
+
+Hierarchy:
+
+```text
+Throwable
+   ↓
+Exception
+   ↓
+RuntimeException
+   ↓
+UserNotFoundException
+```
+
+Because it extends `RuntimeException`, it is an unchecked exception.
+
+Java therefore does not force us to write:
+
+```java
+throws UserNotFoundException
+```
+
+everywhere.
+
+This is convenient for many Spring Boot business exceptions.
+
+---
+
+# 15. Understanding `super(message)`
+
+Consider:
+
+```java
+public class UserNotFoundException extends RuntimeException {
+
+    public UserNotFoundException(String message) {
+        super(message);
+    }
+}
+```
+
+`super(message)` calls the constructor of the parent class.
+
+The parent is:
+
+```java
+RuntimeException
+```
+
+If we write:
+
+```java
+throw new UserNotFoundException(
+    "User with ID 123 was not found"
+);
+```
+
+we can later retrieve the message using:
+
+```java
+e.getMessage();
+```
+
+which returns:
+
+```text
+User with ID 123 was not found
+```
+
+---
+
+# 16. Useful Woodland Custom Exceptions
+
+A possible structure could eventually look like:
+
+```text
+exception/
+├── UserNotFoundException
+├── ClientNotFoundException
+├── ProductNotFoundException
+├── RoleNotFoundException
+├── PermissionNotFoundException
+├── EmailAlreadyExistsException
+└── InvalidInvitationTokenException
+```
+
+Example:
+
+```java
+if (userRepository.existsByEmail(email)) {
+    throw new EmailAlreadyExistsException(
+        "Email already exists"
+    );
+}
+```
+
+Or:
+
+```java
+Client client = clientRepository.findById(id)
+    .orElseThrow(() ->
+        new ClientNotFoundException("Client not found")
+    );
+```
+
+Or:
+
+```java
+Role role = roleRepository.findById(roleId)
+    .orElseThrow(() ->
+        new RoleNotFoundException("Role not found")
+    );
+```
+
+---
+
+# 17. `IllegalArgumentException` vs Custom Exception
+
+This can be valid:
+
+```java
+throw new IllegalArgumentException("Invalid email");
+```
+
+But compare:
+
+```java
+throw new IllegalArgumentException("User not found");
+```
+
+with:
+
+```java
+throw new UserNotFoundException("User not found");
+```
+
+The second communicates much more clearly what happened.
+
+Likewise:
+
+```java
+throw new IllegalStateException("Email already exists");
+```
+
+could become:
+
+```java
+throw new EmailAlreadyExistsException(
+    "Email already exists"
+);
+```
+
+Custom exceptions are especially useful for business/domain-specific situations.
+
+---
+
+# 18. Rethrowing an Exception
+
+Sometimes you catch an exception but decide:
+
+> I cannot completely handle this here.
+
+You can throw it again.
+
+```java
+try {
+
+    processPayment();
+
+} catch (PaymentException e) {
+
+    log.error("Payment processing failed", e);
+
+    throw e;
+}
+```
+
+This is called rethrowing.
+
+The exception continues moving upward.
+
+Rethrowing can make sense when you perform useful work first, such as:
+- logging
+- cleanup
+- metrics
+- adding context elsewhere
+
+---
+
+# 19. Don't Swallow Exceptions
+
+Dangerous:
+
+```java
+try {
+    processSomething();
+} catch (Exception e) {
+    // do nothing
+}
+```
+
+The exception disappears.
+
+Another bad pattern:
+
+```java
+try {
+    processSomething();
+} catch (Exception e) {
+    return null;
+}
+```
+
+The original problem is hidden.
+
+Later you might get a completely different `NullPointerException` somewhere else.
+
+This makes debugging much harder.
+
+---
+
+# 20. Wrapping an Exception
+
+Sometimes you catch one exception and throw another, more meaningful exception.
+
+```java
+try {
+
+    readFile();
+
+} catch (IOException e) {
+
+    throw new FileProcessingException(
+        "Failed to process configuration file",
+        e
+    );
+}
+```
+
+Here:
+
+```text
+IOException
+```
+
+is wrapped inside:
+
+```text
+FileProcessingException
+```
+
+The new exception provides application-level meaning.
+
+---
+
+# 21. Preserving the Original Cause
+
+Notice:
+
+```java
+throw new FileProcessingException(
+    "Failed to process configuration file",
+    e
+);
+```
+
+The second argument is the original exception.
+
+This preserves the cause.
+
+The chain becomes:
+
+```text
+FileProcessingException
+        ↓
+     caused by
+        ↓
+    IOException
+```
+
+This is useful for logging and debugging.
+
+Without the original cause:
+
+```java
+throw new FileProcessingException(
+    "Failed to process configuration file"
+);
+```
+
+you lose useful information about what originally failed.
+
+---
+
+# 22. Custom Exception With a Cause
+
+A custom exception can provide two constructors:
+
+```java
+public class FileProcessingException extends RuntimeException {
+
+    public FileProcessingException(String message) {
+        super(message);
+    }
+
+    public FileProcessingException(
+        String message,
+        Throwable cause
+    ) {
+        super(message, cause);
+    }
+}
+```
+
+Then:
+
+```java
+throw new FileProcessingException(
+    "Failed to process file",
+    e
+);
+```
+
+---
+
+# 23. Don't Catch Just to Throw the Same Exception
+
+Usually this is pointless:
+
+```java
+try {
+    userRepository.save(user);
+
+} catch (Exception e) {
+
+    throw e;
+}
+```
+
+You haven't added meaningful behavior.
+
+But this can make sense:
+
+```java
+try {
+
+    externalPaymentService.process(payment);
+
+} catch (ExternalServiceException e) {
+
+    log.error("Payment provider failed", e);
+
+    throw new PaymentProcessingException(
+        "Unable to process payment",
+        e
+    );
+}
+```
+
+Here you:
+1. detect the lower-level problem
+2. log useful information
+3. translate it into a meaningful application exception
+4. preserve the original cause
+
+---
+
+# 24. Choosing Where to Catch
+
+Important rule:
+
+> Catch an exception at the layer that knows how to handle it.
+
+For example:
+
+```text
+Repository
+   ↓
+Something failed
+```
+
+The repository may not know what HTTP response should be returned.
+
+The service may know the business meaning.
+
+The global handler knows how to translate the exception into an HTTP response.
+
+So:
+
+```text
+Repository
+    ↓
+Service
+    ↓
+Custom Exception
+    ↓
+Global Exception Handler
+    ↓
+HTTP Response
+```
+
+is often cleaner than putting `try-catch` everywhere.
+
+---
+
+# 25. Woodland Example — User Registration
+
+Imagine:
+
+```java
+public UserResponse registerUser(RegisterUserRequest request) {
+
+    if (userRepository.existsByEmail(request.getEmail())) {
+        throw new EmailAlreadyExistsException(
+            "Email already exists"
+        );
+    }
+
+    User user = createUser(request);
+
+    userRepository.save(user);
+
+    return mapToResponse(user);
+}
+```
+
+If the email already exists:
+
+```text
+registerUser()
+      ↓
+EmailAlreadyExistsException
+      ↓
+propagates
+      ↓
+Global Exception Handler
+      ↓
+HTTP response
+```
+
+The service doesn't need to manually create the HTTP response.
+
+---
+
+# 26. Full Exception Flow
+
+A typical Spring Boot backend can conceptually look like:
+
+```text
+                    HTTP REQUEST
+                         ↓
+                    Controller
+                         ↓
+                      Service
+                         ↓
+                    Repository
+                         ↓
+                     Database
+```
+
+If something fails:
+
+```text
+Database / Repository / Service
+              ↓
+        Exception occurs
+              ↓
+       Is it handled here?
+          /                  YES           NO
+         ↓             ↓
+    handle it       propagate
+                       ↓
+                   Service
+                       ↓
+                  Controller
+                       ↓
+             Global Exception Handler
+                       ↓
+                  HTTP Response
+```
+
+---
+
+# 27. The Four Most Important Concepts
+
+## `throw`
+
+> I am raising a problem.
+
+```java
+throw new UserNotFoundException("User not found");
+```
+
+## `throws`
+
+> This method may pass a problem to its caller.
+
+```java
+public void readFile() throws IOException
+```
+
+## `try/catch`
+
+> I know how to handle this problem here.
+
+```java
+try {
+    process();
+} catch (SomeException e) {
+    handle();
+}
+```
+
+## Propagation
+
+> I don't handle this here, so it moves upward.
+
+```text
+Repository
+    ↓
+Service
+    ↓
+Controller
+    ↓
+Global Handler
+```
+
+---
+
+# 28. Practical Rules for Real Projects
+
+## Rule 1 — Don't use try/catch everywhere
+
+Bad:
+
+```java
+try {
+    everything();
+} catch (Exception e) {
+    ...
+}
+```
+
+Use `try-catch` when the current layer genuinely knows how to handle the problem.
+
+## Rule 2 — Prefer meaningful exceptions
+
+Instead of:
+
+```java
+throw new RuntimeException("User not found");
+```
+
+prefer:
+
+```java
+throw new UserNotFoundException("User not found");
+```
+
+when that distinction matters.
+
+## Rule 3 — Don't swallow exceptions
+
+Avoid:
+
+```java
+catch (Exception e) {
+    // nothing
+}
+```
+
+## Rule 4 — Preserve the cause when wrapping
+
+Prefer:
+
+```java
+throw new SomeException(
+    "Something failed",
+    e
+);
+```
+
+over:
+
+```java
+throw new SomeException(
+    "Something failed"
+);
+```
+
+when the original exception contains useful information.
+
+## Rule 5 — Catch specific exceptions when appropriate
+
+Prefer:
+
+```java
+catch (IOException e)
+```
+
+over:
+
+```java
+catch (Exception e)
+```
+
+when you know what you're handling.
+
+## Rule 6 — Let exceptions propagate when appropriate
+
+If the current layer doesn't know how to handle the exception, don't force a `try-catch`.
+
+Let it move to the layer responsible for handling it.
+
+---
+
+# 29. Complete Example
+
+Suppose we have:
+
+```java
+public UserResponse getUser(UUID id) {
+
+    User user = userRepository.findById(id)
+        .orElseThrow(() ->
+            new UserNotFoundException(
+                "User not found with id: " + id
+            )
+        );
+
+    return mapToResponse(user);
+}
+```
+
+Custom exception:
+
+```java
+public class UserNotFoundException extends RuntimeException {
+
+    public UserNotFoundException(String message) {
+        super(message);
+    }
+}
+```
+
+The flow:
+
+```text
+GET /users/{id}
+       ↓
+Controller
+       ↓
+UserService
+       ↓
+userRepository.findById()
+       ↓
+User doesn't exist
+       ↓
+UserNotFoundException
+       ↓
+propagation
+       ↓
+Global Exception Handler
+       ↓
+HTTP 404
+```
+
+This is the foundation of clean exception handling in a Spring Boot backend.
+
+---
+
+# Phase 2 Summary
+
+```text
+try
+ ↓
+contains risky code
+
+catch
+ ↓
+handles a matching exception
+
+finally
+ ↓
+cleanup code that normally executes afterward
+
+throw
+ ↓
+explicitly raises an exception
+
+throws
+ ↓
+declares that a method may pass an exception upward
+
+propagation
+ ↓
+exception moves upward through the call stack
+
+custom exception
+ ↓
+application-specific meaning
+
+rethrow
+ ↓
+catch and raise the exception again
+
+wrapping
+ ↓
+convert a lower-level exception into a meaningful higher-level exception
+
+cause
+ ↓
+preserve the original exception
+```
+
+## Key Backend Principle
+
+```text
+Detect problem
+      ↓
+Throw meaningful exception
+      ↓
+Let it propagate when appropriate
+      ↓
+Handle it at the correct layer
+      ↓
+Convert it into the appropriate response
+```
+
+For a Spring Boot application like Woodland:
+
+```text
+Controller
+    ↓
+Service
+    ↓
+Repository
+    ↓
+Exception
+    ↓
+Global Exception Handler
+    ↓
+HTTP Response
+```
+
+---
+
+# What's Next?
+
+The natural next step is **Phase 3 — Spring Boot Exception Handling**.
+
+There we connect these Java concepts directly to the architecture used in Woodland:
+
+- `@ExceptionHandler`
+- `@RestControllerAdvice`
+- `ResponseEntity`
+- custom error response DTOs
+- HTTP status codes: `400`, `401`, `403`, `404`, `409`, `500`
+- validation exceptions
+- security exceptions
+- `AuthenticationEntryPoint`
+- `AccessDeniedHandler`
+- `JwtAuthFilter` exceptions
+- `SecurityErrorHandler`
+- and finally, how all these pieces work together in the actual Woodland backend.
