@@ -5,16 +5,14 @@
 <br>
 <br>
 
-This note combines both Phase 1 lessons:
+This note combines following lessons:
 
 1. What an exception is, why exceptions happen, and the Java exception hierarchy.
 2. Checked vs unchecked exceptions and common Java exceptions.
 
----
+<br>
 
-# Part 1 — What Is an Exception?
-
-## 1. What is an exception?
+## What Is an Exception?
 
 An **exception is a problem that happens while your program is running and interrupts the normal flow of the program.**
 
@@ -32,11 +30,13 @@ Simple definition:
 
 > An exception is an unexpected condition that interrupts the normal execution of your program.
 
----
+<br>
 
-## 2. Why do exceptions happen?
+## Why do exceptions happen?
 
 Exceptions happen when something occurs that the program cannot continue with normally.
+
+<br>
 
 ### Dividing by zero
 
