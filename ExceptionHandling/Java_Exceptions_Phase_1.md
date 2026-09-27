@@ -411,9 +411,7 @@ Compiler says:
 
 <br>
 
-# Part 3 — Common Java Exceptions
-
-## 16. `NullPointerException`
+## `NullPointerException`
 
 Short name:
 
@@ -465,9 +463,7 @@ Java says:
 
 > "What box?"
 
----
-
-## 17. Another NPE example
+### Another NPE example
 
 ```java
 User user = null;
@@ -489,9 +485,9 @@ user → null
 
 and you're trying to call `getEmail()` on nothing.
 
----
+<br>
 
-# 18. `IllegalArgumentException`
+## `IllegalArgumentException`
 
 This means:
 
@@ -542,9 +538,9 @@ It says:
 
 > "That's not a valid input."
 
----
+<br>
 
-# 19. `IllegalStateException`
+## `IllegalStateException`
 
 This means:
 
@@ -596,9 +592,11 @@ So:
 IllegalStateException
 ```
 
----
+<br>
 
-# 20. IllegalArgumentException vs IllegalStateException
+## IllegalArgumentException vs IllegalStateException
+
+<br>
 
 ### IllegalArgumentException
 
@@ -636,9 +634,9 @@ Easy memory trick:
 >
 > **State = current-condition problem.**
 
----
+<br>
 
-# 21. `IndexOutOfBoundsException`
+## `IndexOutOfBoundsException`
 
 This happens when you try to access something outside its valid range.
 
@@ -674,9 +672,9 @@ For arrays, you may specifically see:
 ArrayIndexOutOfBoundsException
 ```
 
----
+<br>
 
-# 22. `NumberFormatException`
+## `NumberFormatException`
 
 This happens when Java tries to convert text into a number, but the text isn't a valid number.
 
@@ -706,9 +704,9 @@ works:
 "25" → 25
 ```
 
----
+<br>
 
-# 23. `ClassCastException`
+## `ClassCastException`
 
 This happens when you try to treat an object as an incompatible type.
 
@@ -738,7 +736,7 @@ ClassCastException
 
 ---
 
-# 24. `ArithmeticException`
+## `ArithmeticException`
 
 Example:
 
@@ -754,9 +752,9 @@ ArithmeticException
 
 This is another `RuntimeException`.
 
----
+<br>
 
-# 25. `NoSuchElementException`
+## `NoSuchElementException`
 
 You may encounter this with Java collections and `Optional`.
 
@@ -796,9 +794,9 @@ User user = repository.findById(id)
 
 This produces a meaningful application exception instead of an accidental `NoSuchElementException`.
 
----
+<br>
 
-# 26. Common Exception Reference
+## Common Exception Reference
 
 | Exception | Simple meaning | Example |
 |---|---|---|
@@ -811,9 +809,9 @@ This produces a meaningful application exception instead of an accidental `NoSuc
 | `ArithmeticException` | Invalid arithmetic operation | `10 / 0` |
 | `NoSuchElementException` | Expected an element but none exists | `Optional.empty().get()` |
 
----
+<br>
 
-# 27. Notice Something Important
+## Notice Something Important
 
 Most of these common exceptions are:
 
@@ -834,9 +832,9 @@ That's why they are **unchecked exceptions**.
 
 Java doesn't force you to write `try/catch` around them.
 
----
+<br>
 
-# 28. What Should You Do When You Encounter an Exception?
+## What Should You Do When You Encounter an Exception?
 
 Don't immediately think:
 
@@ -895,143 +893,6 @@ NullPointerException
 
 This mindset is very important in backend development.
 
----
+<br>
+<br>
 
-# 29. The Big Picture
-
-```text
-                    Throwable
-                   /                           /                     Exception            Error
-             |
-       RuntimeException
-        /      |              /       |              ↓        ↓         ↓
-    Null     Illegal    Illegal
-  Pointer    Argument   State
- Exception   Exception  Exception
-```
-
-And:
-
-```text
-Checked Exception
-    ↓
-Compiler requires handling/declaring it
-
-Unchecked Exception
-    ↓
-Usually RuntimeException
-    ↓
-Compiler doesn't require handling
-```
-
----
-
-# 30. The Four Most Important Ideas
-
-You don't need to memorize every exception right now.
-
-Remember these:
-
-### ① Exception
-
-> Something went wrong while the program was running.
-
-### ② Checked exception
-
-> Java's compiler forces you to handle or declare it.
-
-### ③ Unchecked exception
-
-> Usually a `RuntimeException`; Java doesn't force you to handle it.
-
-### ④ Common exceptions have meaning
-
-```text
-NullPointerException
-→ "You're using null."
-
-IllegalArgumentException
-→ "You gave me a bad argument."
-
-IllegalStateException
-→ "I'm currently in the wrong state."
-
-IndexOutOfBoundsException
-→ "That position doesn't exist."
-```
-
----
-
-# Quick Mental Model
-
-Think of exceptions as messages from your program:
-
-```text
-NullPointerException
-    → "There is nothing here."
-
-IllegalArgumentException
-    → "You gave me something invalid."
-
-IllegalStateException
-    → "I'm not ready/in the right state for this."
-
-IndexOutOfBoundsException
-    → "That position doesn't exist."
-
-NumberFormatException
-    → "This text isn't a valid number."
-
-ClassCastException
-    → "This object isn't that type."
-
-ArithmeticException
-    → "That mathematical operation isn't valid."
-
-NoSuchElementException
-    → "You expected something, but there isn't anything there."
-```
-
----
-
-# Phase 1 Complete
-
-The foundation is:
-
-```text
-What is an exception?
-        ↓
-Why exceptions happen
-        ↓
-Exception vs Error
-        ↓
-Throwable
-        ↓
-Exception
-        ↓
-RuntimeException
-        ↓
-Checked vs Unchecked
-        ↓
-Common exceptions
-```
-
-The next phase is **Phase 2 — Handling Exceptions in Java**:
-
-```text
-try
- ↓
-catch
- ↓
-finally
-
-throw
- ↓
-throws
-
-Exception propagation
- ↓
-Custom exceptions
-```
-
-This will prepare you for Spring Boot's `@ExceptionHandler`, `@RestControllerAdvice`, and eventually the exception handling implemented in the Woodland backend.
