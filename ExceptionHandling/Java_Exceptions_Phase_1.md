@@ -62,9 +62,9 @@ System.out.println(numbers[5]);
 
 There is no position `5`, so Java throws an exception.
 
----
+<br>
 
-## 3. Exception vs Error
+## Exception vs Error
 
 Java has:
 
@@ -74,6 +74,8 @@ Error
 ```
 
 Both are related to `Throwable`, but they represent different kinds of problems.
+
+<br>
 
 ### Exception
 
@@ -116,9 +118,9 @@ Serious JVM/runtime problem
 Usually not something we try to recover from
 ```
 
----
+<br>
 
-# 4. The Exception Hierarchy
+## The Exception Hierarchy
 
 At the top is:
 
@@ -156,7 +158,7 @@ Throwable
 
 You do not need to memorize the entire hierarchy. Understand the relationships.
 
----
+<br>
 
 # 5. What is `Throwable`?
 
@@ -182,7 +184,7 @@ try {
 
 you generally should **not catch `Throwable` in normal application code**.
 
----
+<br>
 
 # 6. What is `Exception`?
 
@@ -222,7 +224,7 @@ ClientNotFoundException
 EmailAlreadyExistsException
 ```
 
----
+<br>
 
 # 7. What is `RuntimeException`?
 
