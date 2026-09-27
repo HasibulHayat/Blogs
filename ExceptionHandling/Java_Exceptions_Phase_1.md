@@ -160,7 +160,7 @@ You do not need to memorize the entire hierarchy. Understand the relationships.
 
 <br>
 
-# 5. What is `Throwable`?
+## What is `Throwable`?
 
 `Throwable` is the top-level class for things that can be thrown by Java.
 
@@ -186,150 +186,7 @@ you generally should **not catch `Throwable` in normal application code**.
 
 <br>
 
-# 6. What is `Exception`?
-
-`Exception` represents conditions that an application may want to handle.
-
-Examples:
-
-```text
-Exception
-   ↓
-RuntimeException
-   ↓
-NullPointerException
-```
-
-Or:
-
-```text
-Exception
-   ↓
-IOException
-```
-
-Or a custom exception:
-
-```text
-Exception
-   ↓
-UserNotFoundException
-```
-
-In your Woodland backend, application-level exceptions may include:
-
-```text
-UserNotFoundException
-ClientNotFoundException
-EmailAlreadyExistsException
-```
-
-<br>
-
-# 7. What is `RuntimeException`?
-
-`RuntimeException` is a special type of `Exception`.
-
-```text
-Throwable
-   ↓
-Exception
-   ↓
-RuntimeException
-```
-
-Many common programming mistakes produce `RuntimeException`s.
-
-For example:
-
-```java
-String name = null;
-
-name.length();
-```
-
-produces:
-
-```text
-NullPointerException
-```
-
-And:
-
-```java
-throw new IllegalArgumentException("Age cannot be negative");
-```
-
-produces:
-
-```text
-IllegalArgumentException
-```
-
-Both are `RuntimeException`s.
-
----
-
-# 8. Why is the hierarchy useful?
-
-Java understands relationships between classes.
-
-For example:
-
-```text
-NullPointerException
-       ↓
-RuntimeException
-       ↓
-Exception
-       ↓
-Throwable
-```
-
-So you could catch it specifically:
-
-```java
-catch (NullPointerException e) {
-}
-```
-
-or catch a parent:
-
-```java
-catch (RuntimeException e) {
-}
-```
-
-or:
-
-```java
-catch (Exception e) {
-}
-```
-
-Think of:
-
-```text
-Labrador → Dog → Animal
-```
-
-A Labrador is a dog, and a dog is an animal.
-
-Likewise:
-
-```text
-NullPointerException
-        ↓
-RuntimeException
-        ↓
-Exception
-        ↓
-Throwable
-```
-
----
-
-# 9. Catch Specific Exceptions When Possible
+## Catch Specific Exceptions When Possible
 
 Compare:
 
@@ -357,11 +214,9 @@ The second says:
 
 For real backend code, understanding the exact problem is important.
 
----
+<br>
 
-# Part 2 — Checked vs Unchecked Exceptions
-
-## 10. Checked vs Unchecked
+## Checked vs Unchecked
 
 The easiest way to remember the difference:
 
@@ -369,9 +224,9 @@ The easiest way to remember the difference:
 
 > **Unchecked exception = Java doesn't force you to deal with it.**
 
----
+<br>
 
-# 11. Checked Exceptions
+# Checked Exceptions
 
 A checked exception is an exception that the compiler requires you to explicitly handle or declare.
 
@@ -403,9 +258,9 @@ public void readFile() throws FileNotFoundException {
 
 Otherwise, the code will not compile.
 
----
+<br>
 
-# 12. Why are they called "checked"?
+# Why are they called "checked"?
 
 Because the **compiler checks your code**.
 
@@ -433,9 +288,9 @@ or:
 throws FileNotFoundException
 ```
 
----
+<br>
 
-# 13. Unchecked Exceptions
+## Unchecked Exceptions
 
 Unchecked exceptions are generally subclasses of:
 
@@ -473,9 +328,9 @@ but your code can still compile without a `try/catch`.
 
 That's why it is **unchecked**.
 
----
+<br>
 
-# 14. Why doesn't Java force us to catch RuntimeExceptions?
+## Why doesn't Java force us to catch RuntimeExceptions?
 
 Many RuntimeExceptions indicate programming mistakes.
 
@@ -509,9 +364,9 @@ if (name != null) {
 }
 ```
 
----
+<br>
 
-# 15. The Important Hierarchy
+## The Important Hierarchy
 
 ```text
 Throwable
@@ -554,7 +409,7 @@ Compiler says:
 "You don't HAVE to handle this."
 ```
 
----
+<br>
 
 # Part 3 — Common Java Exceptions
 
