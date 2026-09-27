@@ -538,20 +538,6 @@ Reception
 
 When a problem reaches the appropriate central place, it can be translated into a consistent response.
 
-In Spring:
-
-```text
-Service
-   ↓
-Controller
-   ↓
-@RestControllerAdvice
-   ↓
-HTTP Response
-```
-
-<br>
-
 ```
                  ┌─────────────────────────┐
                  │   @RestControllerAdvice │
@@ -604,66 +590,6 @@ Unexpected server problem
        ↓
 500 Internal Server Error
 ```
-
-<br>
-
-## 18. Application Flow to Remember
-
-For normal application exceptions:
-
-```text
-HTTP Request
-     ↓
-Controller
-     ↓
-Service
-     ↓
-Repository
-     ↓
-Database
-     ↓
-Exception
-     ↓
-Global Exception Handler
-     ↓
-Error Response
-     ↓
-HTTP Response
-```
-
-This is one of the most important Spring Boot exception-handling mental models.
-
-<br>
-
-## 19. What We Will Improve Later
-
-The examples in Part A use simple strings:
-
-```java
-.body("User not found");
-```
-
-For a production backend, we usually want a structured response such as:
-
-```json
-{
-  "timestamp": "2026-09-27T11:15:30",
-  "status": 404,
-  "error": "Not Found",
-  "message": "User not found",
-  "path": "/api/v1/users/123"
-}
-```
-
-We can also add:
-
-```text
-code
-errors
-field validation details
-```
-
-That is the next level of exception-handling design.
 
 <br>
 <br>
