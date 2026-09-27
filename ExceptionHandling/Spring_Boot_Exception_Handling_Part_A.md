@@ -404,7 +404,7 @@ Detailed information should normally be logged on the server.
 
 <br>
 
-## 12. Never Expose Stack Traces to the Client
+## Never Expose Stack Traces to the Client
 
 Bad:
 
@@ -437,9 +437,9 @@ Instead:
 
 The server can log the real exception for debugging.
 
----
+<br>
 
-## 13. `@RestControllerAdvice` vs `@ControllerAdvice`
+## `@RestControllerAdvice` vs `@ControllerAdvice`
 
 Spring provides:
 
@@ -475,9 +475,9 @@ public class GlobalExceptionHandler {
 
 is a natural choice.
 
----
+<br>
 
-## 14. Basic Global Exception Handler Structure
+## Basic Global Exception Handler Structure
 
 A simple starting structure:
 
@@ -518,9 +518,9 @@ This is only the foundation.
 
 Later, we improve the response structure with an `ErrorResponse` DTO.
 
----
+<br>
 
-## 15. Woodland Example
+## Woodland Example
 
 Imagine Woodland has:
 
@@ -575,9 +575,9 @@ The frontend might receive:
 
 This is much cleaner than returning a Java exception.
 
----
+<br>
 
-## 16. Important Mental Model
+## Important Mental Model
 
 Think of the Global Exception Handler as an emergency reception desk.
 
@@ -609,9 +609,9 @@ HTTP Response
 
 The global handler converts Java exceptions into API-friendly responses.
 
----
+<br>
 
-## 17. Exception Handling Is Not Only About 500
+## Exception Handling Is Not Only About 500
 
 A common beginner mistake is thinking:
 
@@ -647,7 +647,7 @@ Unexpected server problem
 500 Internal Server Error
 ```
 
----
+<br>
 
 ## 18. Application Flow to Remember
 
@@ -675,7 +675,7 @@ HTTP Response
 
 This is one of the most important Spring Boot exception-handling mental models.
 
----
+<br>
 
 ## 19. What We Will Improve Later
 
@@ -707,93 +707,8 @@ field validation details
 
 That is the next level of exception-handling design.
 
----
+<br>
+<br>
 
-# 20. Part A Summary
 
-### `@RestControllerAdvice`
 
-Creates a centralized exception-handling area for REST controllers.
-
-### `@ExceptionHandler`
-
-Tells Spring which exception a method handles.
-
-### `ResponseEntity`
-
-Allows us to control the HTTP response.
-
-### Custom Exceptions
-
-Represent meaningful application problems.
-
-Examples:
-
-```text
-UserNotFoundException
-EmailAlreadyExistsException
-ClientNotFoundException
-RoleNotFoundException
-```
-
-### Generic Handler
-
-Provides a fallback for unexpected exceptions.
-
-### Main Mental Model
-
-```text
-Exception
-    ↓
-Global Exception Handler
-    ↓
-Meaningful HTTP Status
-    ↓
-Clean API Response
-```
-
----
-
-# Quick Reference
-
-```java
-@RestControllerAdvice
-public class GlobalExceptionHandler {
-
-    @ExceptionHandler(UserNotFoundException.class)
-    public ResponseEntity<?> handleUserNotFound(
-            UserNotFoundException ex) {
-
-        return ResponseEntity
-                .status(HttpStatus.NOT_FOUND)
-                .body(ex.getMessage());
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<?> handleGenericException(
-            Exception ex) {
-
-        return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body("An unexpected error occurred");
-    }
-}
-```
-
-The important idea is not memorizing the code.
-
-Understand the flow:
-
-```text
-Problem happens
-     ↓
-Exception is thrown
-     ↓
-Exception propagates
-     ↓
-Global handler catches it
-     ↓
-Exception becomes HTTP response
-```
-
-That is the foundation of Spring Boot exception handling.
