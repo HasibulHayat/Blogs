@@ -226,7 +226,7 @@ The easiest way to remember the difference:
 
 <br>
 
-# Checked Exceptions
+### Checked Exceptions
 
 A checked exception is an exception that the compiler requires you to explicitly handle or declare.
 
@@ -260,7 +260,7 @@ Otherwise, the code will not compile.
 
 <br>
 
-# Why are they called "checked"?
+### Why are they called "checked"?
 
 Because the **compiler checks your code**.
 
