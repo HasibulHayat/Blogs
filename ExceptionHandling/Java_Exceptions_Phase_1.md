@@ -1,4 +1,9 @@
+<br>
+
 # Java Exceptions — Phase 1
+
+<br>
+<br>
 
 This note combines both Phase 1 lessons:
 
