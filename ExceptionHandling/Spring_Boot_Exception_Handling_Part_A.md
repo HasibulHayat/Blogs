@@ -520,63 +520,6 @@ Later, we improve the response structure with an `ErrorResponse` DTO.
 
 <br>
 
-## Woodland Example
-
-Imagine Woodland has:
-
-```text
-GET /api/v1/users/{id}
-```
-
-The request enters:
-
-```text
-Client
-  ↓
-Spring Security
-  ↓
-UserController
-  ↓
-UserService
-  ↓
-UserRepository
-  ↓
-PostgreSQL
-```
-
-Suppose the user does not exist.
-
-The service does:
-
-```java
-throw new UserNotFoundException("User not found");
-```
-
-The exception travels upward.
-
-Eventually:
-
-```text
-UserNotFoundException
-        ↓
-GlobalExceptionHandler
-        ↓
-HTTP 404
-```
-
-The frontend might receive:
-
-```json
-{
-  "status": 404,
-  "message": "User not found"
-}
-```
-
-This is much cleaner than returning a Java exception.
-
-<br>
-
 ## Important Mental Model
 
 Think of the Global Exception Handler as an emergency reception desk.
@@ -605,6 +548,21 @@ Controller
 @RestControllerAdvice
    ↓
 HTTP Response
+```
+
+<br>
+
+```
+                 ┌─────────────────────────┐
+                 │   @RestControllerAdvice │
+                 │                         │
+                 │   Exception Handling    │
+                 └────────────▲────────────┘
+                              │
+                              │ catches/handles
+                              │ exceptions
+                              │
+Client → Security → Controller → Service → Repository → DB
 ```
 
 The global handler converts Java exceptions into API-friendly responses.
