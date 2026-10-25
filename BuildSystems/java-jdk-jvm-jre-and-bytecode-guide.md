@@ -1,3 +1,5 @@
+<br>
+
 # Understanding Java: JDK, JVM, JRE, Bytecode, and How a Program Runs
 
 *A beginner-friendly guide to the foundations behind Java---and why
@@ -47,6 +49,8 @@ code are different activities**.
 
 This guide explains what each part does and why Java is designed this
 way.
+
+<br>
 
 ## 2. What is the JDK?
 
