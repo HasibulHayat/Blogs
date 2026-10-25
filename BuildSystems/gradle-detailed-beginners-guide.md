@@ -1,0 +1,526 @@
+# Gradle: A Detailed Beginner's Guide for Java Developers
+
+## 1. What Is Gradle?
+
+Gradle is a **build automation tool**. It coordinates the steps required to turn source code into a tested, packaged application.
+
+For a Java project, a build may involve:
+
+1. Finding and resolving external libraries.
+2. Compiling Java source files into `.class` files.
+3. Processing application resources.
+4. Compiling and running tests.
+5. Packaging compiled code and resources into a JAR or another artifact.
+6. Performing checks and other project-specific tasks.
+
+Gradle automates and coordinates this workflow. It does not replace Java, the JDK, or the JVM. It uses the Java toolchain and manages the build process around it.
+
+### Connection to manual Java compilation
+
+Before learning Gradle, we compiled a Java program that used Jackson by manually downloading JARs and setting classpaths:
+
+```bash
+javac -cp "lib/*" -d out src/Main.java
+java -cp "out:lib/*" Main
+```
+
+Gradle can manage dependencies and coordinate equivalent compilation and testing steps. Instead of manually maintaining the JAR list and classpaths, you declare the libraries your project needs and let Gradle resolve them.
+
+## 2. A Typical Gradle Project Structure
+
+A conventional Java Gradle project may look like this:
+
+```text
+MyProject/
+├── gradlew
+├── gradlew.bat
+├── settings.gradle
+├── build.gradle
+├── gradle/
+│   └── wrapper/
+│       ├── gradle-wrapper.jar
+│       └── gradle-wrapper.properties
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   └── resources/
+│   └── test/
+│       ├── java/
+│       └── resources/
+└── build/
+```
+
+The exact files and folders vary by project, plugins, and Gradle DSL. This is the common structure for a basic Java project.
+
+| File or folder | Purpose |
+|---|---|
+| `build.gradle` | Groovy DSL build script: plugins, repositories, dependencies, and build configuration. |
+| `build.gradle.kts` | Kotlin DSL alternative to `build.gradle`. A project generally uses one build-script format for a given project. |
+| `settings.gradle` | Groovy DSL settings script for the build and its projects. |
+| `settings.gradle.kts` | Kotlin DSL alternative for settings. |
+| `gradlew` | Gradle Wrapper script for Linux/macOS. |
+| `gradlew.bat` | Gradle Wrapper script for Windows. |
+| `gradle/wrapper/` | Wrapper JAR and configuration, including the selected Gradle distribution. |
+| `src/main/java/` | Main Java source code. |
+| `src/main/resources/` | Main application resources, such as configuration files. |
+| `src/test/java/` | Test source code. |
+| `src/test/resources/` | Resources used by tests. |
+| `build/` | Generated output such as compiled classes, reports, and packaged artifacts. |
+
+The Java plugin uses these conventional source directories by default. You can configure different locations if necessary.
+
+## 3. Build Scripts: Groovy DSL and Kotlin DSL
+
+Gradle build files are executable configuration scripts. Gradle supports two primary DSLs (domain-specific languages).
+
+### Groovy DSL: `build.gradle`
+
+```groovy
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.3'
+}
+```
+
+### Kotlin DSL: `build.gradle.kts`
+
+```kotlin
+plugins {
+    java
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.3")
+}
+```
+
+Both examples express the same basic idea: apply the Java plugin, use Maven Central as a dependency repository, and declare Jackson Databind as an application dependency.
+
+The syntax differs:
+
+- Groovy DSL commonly uses single-quoted strings and plugin IDs such as `id 'java'`.
+- Kotlin DSL uses Kotlin syntax, including parentheses and function calls such as `implementation("...")`.
+
+Do not copy Groovy syntax directly into a Kotlin DSL file. Check whether the project uses `build.gradle` or `build.gradle.kts` first.
+
+## 4. The `plugins` Block
+
+Example:
+
+```groovy
+plugins {
+    id 'java'
+}
+```
+
+A Gradle **plugin** adds build capabilities, tasks, and configuration.
+
+The `java` plugin provides a standard Java build workflow, including tasks for compiling Java, running tests, and packaging classes into a JAR.
+
+Other plugins can add other capabilities. For example, a Spring Boot application commonly uses the Spring Boot Gradle plugin alongside Java-related plugins. We will study Spring Boot's plugin separately.
+
+A plugin is not the same thing as a library dependency:
+
+- A **plugin** changes or extends the build process.
+- A **dependency** is a library or component that the project uses.
+
+## 5. The `repositories` Block
+
+Example:
+
+```groovy
+repositories {
+    mavenCentral()
+}
+```
+
+A repository is a location where Gradle can retrieve dependency artifacts and their metadata.
+
+`mavenCentral()` points Gradle to Maven Central, a widely used public repository for Java libraries.
+
+**Maven Central is a repository, not the Maven build tool.** Gradle can download libraries from Maven Central without using Maven to build the project.
+
+A dependency repository is different from a source-code repository such as GitHub. A source repository stores project code; an artifact repository stores versioned libraries and other build artifacts.
+
+If a declared dependency cannot be found in any configured repository, dependency resolution may fail.
+
+## 6. The `dependencies` Block
+
+Example:
+
+```groovy
+dependencies {
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.3'
+}
+```
+
+This tells Gradle that the project uses Jackson Databind version `2.18.3`.
+
+The three parts of the dependency coordinate are:
+
+```text
+com.fasterxml.jackson.core : jackson-databind : 2.18.3
+             group         :     artifact      : version
+```
+
+- **Group** identifies the publisher or project namespace.
+- **Artifact** identifies the particular library.
+- **Version** identifies the release.
+
+These coordinates help Gradle identify the exact dependency to resolve.
+
+### What happens after declaring a dependency?
+
+Gradle can:
+
+1. Search the configured repositories.
+2. Find the requested artifact and its metadata.
+3. Resolve its required dependencies.
+4. Make the resolved artifacts available on the appropriate compile and runtime classpaths.
+
+This replaces the manual process of downloading individual JARs and assembling classpaths.
+
+## 7. Transitive Dependencies
+
+A library can require other libraries to function. These are its dependencies; dependencies required by a dependency are often called **transitive dependencies**.
+
+For example, an application may directly declare Jackson Databind. Databind also requires Jackson Core and Jackson Annotations.
+
+With a suitable dependency declaration and repository configuration, Gradle resolves these transitive dependencies according to the published dependency metadata and applicable version-resolution rules.
+
+This is important because a project can depend on many libraries indirectly. You normally should not need to manually download each transitive JAR and add it to a classpath.
+
+Dependency resolution can still encounter version conflicts, unavailable artifacts, or incompatible libraries. Gradle has rules and diagnostic tasks for helping investigate such cases.
+
+## 8. Dependency Configurations
+
+The configuration name determines how a dependency participates in the build.
+
+| Configuration | General purpose |
+|---|---|
+| `implementation` | A library used by the main application implementation. It is available on the main source set's compile and runtime classpaths as appropriate. |
+| `compileOnly` | A library needed to compile code but not normally supplied by this configuration at runtime. |
+| `runtimeOnly` | A library needed at runtime but not to compile the application's source code directly. |
+| `testImplementation` | A dependency used to compile and run tests. |
+| `testRuntimeOnly` | A dependency needed at test runtime. |
+
+Examples:
+
+```groovy
+dependencies {
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.3'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+}
+```
+
+These version numbers are examples; a real project should choose versions compatible with its Java version and other dependencies. In a Spring Boot project, dependency management may control many library versions for you.
+
+### A practical example: JDBC driver
+
+A PostgreSQL JDBC driver is commonly declared with `runtimeOnly` if the application's source code does not directly use driver-specific classes:
+
+```groovy
+dependencies {
+    runtimeOnly 'org.postgresql:postgresql:VERSION'
+}
+```
+
+Replace `VERSION` with a valid version. The example is illustrative, not a complete build file.
+
+## 9. Gradle Tasks
+
+A **task** is a unit of work that Gradle can execute. Plugins register tasks and configure how they behave.
+
+The Java plugin provides commonly used tasks:
+
+| Task | Purpose |
+|---|---|
+| `clean` | Removes generated build output from the project's build directory. |
+| `compileJava` | Compiles the main Java source code. |
+| `processResources` | Processes and copies main resources. |
+| `classes` | Builds the main source set's classes and resources. |
+| `compileTestJava` | Compiles test source code. |
+| `test` | Runs configured tests. |
+| `jar` | Packages compiled main classes and resources into a JAR. |
+| `check` | Runs verification tasks configured for the project. |
+| `build` | Runs the broader build lifecycle, including verification and assembly tasks. |
+
+The exact task graph can change with plugins and project configuration.
+
+### Running tasks
+
+When a project includes the Gradle Wrapper, use commands such as:
+
+```bash
+./gradlew clean
+./gradlew compileJava
+./gradlew test
+./gradlew build
+```
+
+On Linux/macOS, `./` means run the script in the current directory. The Wrapper script is named `gradlew`.
+
+### Task dependencies
+
+Tasks can depend on other tasks. For example, compiling and testing require compiled classes and resources to be available first. Gradle runs prerequisite tasks in the required order.
+
+You usually do not need to manually invoke every step. Requesting a higher-level task such as `build` lets Gradle execute the necessary task graph.
+
+## 10. What Does `./gradlew build` Do?
+
+At a high level, `./gradlew build` asks Gradle to run the project's build lifecycle.
+
+For a typical Java project, that includes relevant work such as:
+
+1. Compiling main source code.
+2. Processing main resources.
+3. Compiling test source code.
+4. Running tests and configured checks.
+5. Assembling the project's output artifact.
+
+The exact work depends on the plugins and task configuration. A Spring Boot project adds its own tasks and packaging behavior.
+
+A successful build indicates that the tasks included in that build completed successfully. It does not guarantee that the application is free of every bug or that deployment configuration is correct.
+
+## 11. The Gradle Wrapper
+
+You may see both of these commands:
+
+```bash
+gradle build
+./gradlew build
+```
+
+`gradle build` uses a Gradle installation available on the machine. `./gradlew build` uses the project's **Gradle Wrapper**.
+
+The Wrapper consists of scripts and configuration that specify the Gradle distribution version for the project. If the distribution is not already cached, the Wrapper can download it.
+
+### Why the Wrapper matters
+
+Suppose two developers have different Gradle versions installed globally. A project that uses the Wrapper can specify one Gradle version for the team and for build environments such as CI.
+
+The Wrapper improves build consistency and reduces the need for every developer to manually install the same Gradle version.
+
+A Java project still needs a suitable JDK. The Gradle Wrapper supplies or selects Gradle; it does not automatically include the full JDK.
+
+**Practical rule:** if the project contains `gradlew`, generally use `./gradlew` for project builds.
+
+## 12. Gradle and Java Classpaths
+
+Recall the manual commands:
+
+```bash
+javac -cp "lib/*" -d out src/Main.java
+java -cp "out:lib/*" Main
+```
+
+The compile-time classpath made Jackson available to `javac`. The runtime classpath made both the application classes and Jackson available to the JVM.
+
+Gradle manages these classpaths from its source sets and dependency configurations. You normally declare dependencies instead of writing the complete classpath by hand.
+
+For example:
+
+```groovy
+dependencies {
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.3'
+}
+```
+
+Gradle resolves the library and configures the relevant classpaths for compilation and runtime.
+
+This does not mean the dependency becomes part of Java itself. The required classes still have to be available when the application runs, whether through a normal runtime classpath or an application package that includes dependencies.
+
+## 13. The `build/` Directory
+
+Gradle commonly writes generated output to `build/`.
+
+After building, it may contain directories and files such as:
+
+```text
+build/
+├── classes/
+│   ├── java/
+│   │   ├── main/
+│   │   └── test/
+├── resources/
+├── reports/
+├── test-results/
+├── libs/
+└── tmp/
+```
+
+The exact structure varies by plugins and tasks.
+
+This directory is generated output, unlike `src/`, which contains source files you maintain.
+
+The `clean` task removes generated build output so the next build can recreate it. Do not treat `build/` as the place to manually maintain application source code.
+
+## 14. Incremental Builds and Task Avoidance
+
+Gradle can avoid repeating work when it determines that task inputs and outputs have not changed and that the task is configured to support up-to-date checking or caching.
+
+For example, after a successful compilation, running the same compilation task again without relevant changes may report that the task is `UP-TO-DATE`.
+
+Gradle may also reuse task outputs through build caching when caching is configured and applicable.
+
+This is one reason build tools can be more efficient than manually repeating every compilation and packaging command. The exact behavior depends on the task and build configuration.
+
+## 15. Gradle Dependency Caches
+
+Gradle generally caches downloaded dependencies in a user-level Gradle cache rather than downloading every library from scratch for every build.
+
+This cache is separate from your project's `build/` directory:
+
+- `build/` contains generated output for the project.
+- The Gradle user cache stores downloaded and cached data that may be reused across projects.
+
+Deleting a project's `build/` directory does not normally remove the globally cached dependency JARs.
+
+The cache is an implementation detail you usually do not need to manage day to day. Dependency resolution can still require network access when an artifact is not cached or when Gradle needs updated metadata.
+
+## 16. Useful Gradle Commands
+
+Run these from the root of a Gradle project that includes the Wrapper.
+
+| Command | Use |
+|---|---|
+| `./gradlew --version` | Show the Gradle version and environment details. |
+| `./gradlew tasks` | List available tasks. |
+| `./gradlew help` | Display help for the build. |
+| `./gradlew clean` | Remove generated build output. |
+| `./gradlew compileJava` | Compile main Java code. |
+| `./gradlew test` | Run tests. |
+| `./gradlew build` | Run the configured build lifecycle. |
+| `./gradlew jar` | Create the Java plugin's JAR artifact. |
+| `./gradlew dependencies` | Display dependency information for configurations. |
+| `./gradlew dependencyInsight --dependency jackson-databind` | Investigate why a dependency is present and which version was selected; support and output depend on the project's configurations. |
+
+For a specific dependency configuration, you can inspect it with a command such as:
+
+```bash
+./gradlew dependencies --configuration runtimeClasspath
+```
+
+This helps show which dependencies are available on the main runtime classpath.
+
+## 17. Common Problems and How to Think About Them
+
+### Dependency cannot be resolved
+
+Possible causes include:
+
+- The dependency coordinates or version are incorrect.
+- The repository is not configured.
+- Network access or repository access is unavailable.
+- A requested artifact is not published in the configured repository.
+
+Check the dependency declaration, repository configuration, and error message.
+
+### Compilation cannot find an imported class
+
+Possible causes include:
+
+- The dependency is missing.
+- It is declared in the wrong configuration.
+- The import or class name is wrong.
+- The source code is being compiled in a different source set than expected.
+
+Remember that compilation requires the relevant class on the compile classpath.
+
+### Application starts but fails with a missing class
+
+The class may be missing from the runtime classpath or runtime package, even if compilation succeeded. Check the runtime dependency configuration and how the application is launched or packaged.
+
+### `gradlew` is not executable
+
+On Linux, a checked-out or downloaded Wrapper script may lack execute permission. If the script is trusted and belongs to the project, you can make it executable:
+
+```bash
+chmod +x gradlew
+```
+
+Then run:
+
+```bash
+./gradlew build
+```
+
+### Wrong Java or Gradle version
+
+Check:
+
+```bash
+java -version
+javac -version
+./gradlew --version
+```
+
+A project's Gradle version and Java requirements must be compatible. The Gradle Wrapper selects Gradle, while the JDK provides Java compilation and runtime tools.
+
+## 18. Gradle and Spring Boot
+
+Spring Boot projects commonly use Gradle with plugins that add Spring Boot-specific build tasks and configuration.
+
+A Spring Boot build often has:
+
+- A Java plugin or equivalent Java support.
+- The Spring Boot Gradle plugin.
+- Dependency management, often through Spring Boot's supported dependency management approach.
+- Dependencies for web, data access, security, database drivers, and testing.
+- Tasks for testing, packaging, and running the application.
+
+The Spring Boot plugin commonly provides a `bootJar` task for creating an executable JAR that includes application classes and runtime dependencies. This is different from a plain Java `jar` task, which normally packages the project's own classes and resources without bundling all runtime dependencies.
+
+The exact build script depends on the Spring Boot and Gradle versions and on the project's chosen configuration. We will explore this after learning the core Gradle concepts.
+
+## 19. A Simple Mental Model
+
+Think of the pieces this way:
+
+- **Java source code** is what you write.
+- **The JDK** provides the compiler and other development tools.
+- **The JVM** executes Java bytecode.
+- **A dependency** is a library your project uses.
+- **A repository** is where Gradle can retrieve libraries.
+- **A plugin** adds capabilities and tasks to the build.
+- **A build script** describes the project's build configuration.
+- **A task** is a unit of work.
+- **The Gradle Wrapper** selects the Gradle version specified by the project.
+- **Gradle** resolves dependencies and coordinates the build tasks.
+
+## 20. Key Takeaways
+
+1. Gradle automates and coordinates the build process; it does not replace Java or the JVM.
+2. `build.gradle` uses Groovy DSL; `build.gradle.kts` uses Kotlin DSL.
+3. Plugins add build capabilities; dependencies provide libraries used by the application.
+4. Repositories are locations from which dependencies can be retrieved.
+5. Dependency coordinates commonly contain a group, artifact, and version.
+6. Gradle can resolve transitive dependencies rather than requiring every JAR to be downloaded manually.
+7. `implementation`, `runtimeOnly`, `compileOnly`, and test configurations describe different dependency roles.
+8. Tasks such as `compileJava`, `test`, `jar`, and `build` perform different parts of the build.
+9. Prefer `./gradlew` when the project provides a Wrapper.
+10. `src/` contains maintained source code; `build/` contains generated output.
+11. Gradle's classpath configuration connects dependency resolution with compilation and runtime.
+12. Spring Boot builds add Spring Boot-specific plugins and packaging tasks on top of the core Gradle workflow.
+
+## Suggested Next Steps
+
+Once these concepts are clear, practice in this order:
+
+1. Inspect an existing Gradle project's `build.gradle` or `build.gradle.kts`.
+2. Run `./gradlew tasks` and identify the main Java tasks.
+3. Run `./gradlew clean build`.
+4. Add a small library dependency and inspect `./gradlew dependencies`.
+5. Study the Spring Boot Gradle plugin and the difference between `jar` and `bootJar`.
