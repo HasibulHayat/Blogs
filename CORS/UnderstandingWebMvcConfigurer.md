@@ -41,7 +41,7 @@ You are saying:
 <br>
 
 
-# 2. First: what is Spring MVC?
+## 2. First: what is Spring MVC?
 
 <br>
 
@@ -92,7 +92,7 @@ Spring MVC already knows how to do many things, such as:
 <br>
 
 
-# 3. What is an interface in Java?
+## 3. What is an interface in Java?
 
 <br>
 
@@ -129,7 +129,7 @@ The interface says:
 <br>
 
 
-# 4. What is a default method?
+## 4. What is a default method?
 
 <br>
 
@@ -173,7 +173,7 @@ This is the important idea behind `WebMvcConfigurer`.
 <br>
 
 
-# 5. WebMvcConfigurer uses default methods
+## 5. WebMvcConfigurer uses default methods
 
 <br>
 
@@ -217,7 +217,7 @@ You can override only the method you need.
 <br>
 
 
-# 6. Your WebConfig class
+## 6. Your WebConfig class
 
 <br>
 
@@ -231,7 +231,7 @@ public class WebConfig implements WebMvcConfigurer {
 
 There are two important parts.
 
-## `@Configuration`
+### `@Configuration`
 
 ```java
 @Configuration
@@ -244,7 +244,7 @@ This tells Spring:
 Spring discovers this class during application startup.
 
 
-## `implements WebMvcConfigurer`
+### `implements WebMvcConfigurer`
 
 ```java
 implements WebMvcConfigurer
@@ -260,7 +260,7 @@ It also allows your class to provide Spring MVC customizations.
 <br>
 
 
-# 7. The CORS method
+## 7. The CORS method
 
 <br>
 
@@ -297,7 +297,7 @@ This means:
 <br>
 
 
-# 8. What is CorsRegistry?
+## 8. What is CorsRegistry?
 
 <br>
 
@@ -360,7 +360,7 @@ means:
 <br>
 
 
-# 9. Another WebMvcConfigurer method: interceptors
+## 9. Another WebMvcConfigurer method: interceptors
 
 <br>
 
@@ -397,7 +397,7 @@ This can be useful for request-related processing, logging, and other cross-cutt
 <br>
 
 
-# 10. Resource handlers
+## 10. Resource handlers
 
 <br>
 
@@ -436,7 +436,7 @@ classpath:/images/
 <br>
 
 
-# 11. View controllers
+## 11. View controllers
 
 <br>
 
@@ -465,7 +465,7 @@ Conceptually:
 <br>
 
 
-# 12. Path matching
+## 12. Path matching
 
 <br>
 
@@ -501,7 +501,7 @@ Path matching configuration can influence that behavior.
 <br>
 
 
-# 13. What happens when the application starts?
+## 13. What happens when the application starts?
 
 <br>
 
@@ -541,7 +541,7 @@ It isn't something that your frontend directly calls.
 <br>
 
 
-# 14. The whole thing in one picture
+## 14. The whole thing in one picture
 
 <br>
 
@@ -578,7 +578,7 @@ CorsRegistry
 <br>
 
 
-# 15. Key things to remember
+## 15. Key things to remember
 
 <br>
 
@@ -618,7 +618,7 @@ The object you use to register CORS rules.
 <br>
 
 
-# 16. The simplest mental model
+## 16. The simplest mental model
 
 <br>
 
