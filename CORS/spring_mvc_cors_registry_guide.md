@@ -183,9 +183,7 @@ separate them.
 all endpoints share the same frontend origins and CORS policy. You can
 narrow it to `/api/**` if all browser-facing endpoints use that prefix.
 
-------------------------------------------------------------------------
-
-# Part II --- Origin rules
+<br>
 
 ## 4. `allowedOrigins(String... origins)`
 
@@ -258,7 +256,7 @@ Because your system uses HTTP-only refresh-token cookies, you will
 likely need credentialed cross-origin requests. Use explicit origins
 rather than `*`.
 
-------------------------------------------------------------------------
+<br>
 
 ## 5. `allowedOriginPatterns(String... patterns)`
 
@@ -309,9 +307,7 @@ reason about initially. Later, if you adopt a controlled subdomain
 structure, patterns may be useful---but only if every matching subdomain
 is trusted.
 
-------------------------------------------------------------------------
-
-# Part III --- HTTP methods
+<br>
 
 ## 6. `allowedMethods(String... methods)`
 
@@ -374,9 +370,7 @@ expected to use and avoids granting unnecessary methods.
 For your API, the six methods above are a sensible starting point. Add
 `HEAD` or another method only if your application needs it.
 
-------------------------------------------------------------------------
-
-# Part IV --- Request headers
+<br>
 
 ## 7. `allowedHeaders(String... headers)`
 
@@ -479,9 +473,7 @@ is often easier to audit. Spring also has special handling for wildcard
 headers when credentials are enabled, so do not confuse the wildcard
 rules for headers with the stricter wildcard rule for origins.
 
-------------------------------------------------------------------------
-
-# Part V --- Response headers
+<br>
 
 ## 8. `exposedHeaders(String... headers)`
 
@@ -536,9 +528,7 @@ This could be useful for report downloads or request tracing.
 You do not need to expose every response header. Add only those that
 your frontend actually needs to read.
 
-------------------------------------------------------------------------
-
-# Part VI --- Credentials and cookies
+<br>
 
 ## 9. `allowCredentials(boolean allowCredentials)`
 
@@ -622,9 +612,7 @@ It also does not protect your application against CSRF.
 Cookie-authenticated state-changing endpoints need an appropriate CSRF
 strategy.
 
-------------------------------------------------------------------------
-
-# Part VII --- Preflight caching
+<br>
 
 ## 10. `maxAge(long maxAge)`
 
@@ -673,9 +661,7 @@ long.
 Spring's documented default for this setting is 1800 seconds when using
 its standard MVC global CORS configuration defaults.
 
-------------------------------------------------------------------------
-
-# Part VIII --- Advanced options
+<br>
 
 ## 11. `allowPrivateNetwork(boolean allowPrivateNetwork)`
 
@@ -703,7 +689,7 @@ before using it.
 
 Do not enable it just because your application is multi-tenant.
 
-------------------------------------------------------------------------
+<br>
 
 ## 12. `combine(CorsConfiguration other)`
 
@@ -723,9 +709,7 @@ to call this method.
 You can safely ignore it while learning the normal CORS configuration
 flow.
 
-------------------------------------------------------------------------
-
-# Part IX --- Putting it all together
+<br>
 
 ## 13. A complete development configuration
 
@@ -794,9 +778,7 @@ With Spring MVC on the classpath and CORS configured through
 Avoid creating a second, conflicting CORS policy unless you have a
 specific reason to do so.
 
-------------------------------------------------------------------------
-
-## 14. How a preflight request looks in practice
+<br>
 
 Suppose your frontend is running at `http://localhost:5500` and wants to
 delete an apartment.
@@ -841,9 +823,7 @@ Authorization: Bearer <access-token>
 Your normal backend security and authorization logic still decides
 whether the user is authenticated and allowed to delete that apartment.
 
-------------------------------------------------------------------------
-
-# Part X --- Common mistakes and important distinctions
+<br>
 
 ## 15. Mistake: using `*` with credentials
 
@@ -912,9 +892,8 @@ A preflight request is a browser protocol check. Spring's CORS support
 handles it. You generally should not create a controller method for
 every `OPTIONS` request.
 
-------------------------------------------------------------------------
-
-# Part XI --- How this fits your multi-tenant architecture
+<br>
+<br>
 
 Right now, your system has one backend serving multiple tenant
 frontends.
@@ -945,7 +924,7 @@ Also remember that a valid CORS origin does not establish which tenant's
 data a user may access. Tenant identification and tenant authorization
 must remain separate server-side responsibilities.
 
-------------------------------------------------------------------------
+<br>
 
 # Quick reference
 
@@ -997,7 +976,8 @@ For day-to-day work, the most important methods are:
 The advanced methods can wait until you encounter a real requirement for
 them.
 
-------------------------------------------------------------------------
+<br>
+<br>
 
 ## Official references
 
@@ -1007,3 +987,5 @@ them.
     API](https://docs.spring.io/spring-framework/docs/6.2.1/javadoc-api/org/springframework/web/servlet/config/annotation/CorsRegistration.html)
 -   [Spring Framework --- CorsConfiguration
     source](https://github.com/spring-projects/spring-framework/blob/main/spring-web/src/main/java/org/springframework/web/cors/CorsConfiguration.java)
+
+<br>
