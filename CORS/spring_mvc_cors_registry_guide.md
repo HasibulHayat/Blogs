@@ -1,17 +1,9 @@
-# Spring MVC CORS Configuration: A Complete Guide to `CorsRegistry`
+<br>
 
-This guide explains Spring MVC's `CorsRegistry` and every public
-configuration method you commonly use after calling `addMapping()`. It
-uses Java examples and relates the concepts to a Spring Boot + Spring
-Security + PostgreSQL Apartment Management System.
+# Spring MVC CORS Configuration
 
-> **Version note:** The examples use the Spring MVC API available in
-> modern Spring Framework 6.x / Spring Boot 3.x. Some methods,
-> especially `allowPrivateNetwork`, depend on the exact Spring Framework
-> version. Check your project's Spring Framework version before using
-> newer methods.
-
-------------------------------------------------------------------------
+<br>
+<br>
 
 ## 1. First, what are we configuring?
 
@@ -55,7 +47,7 @@ isolation. It is not a firewall and does not stop requests made by tools
 such as curl or Postman. It controls browser access to cross-origin
 responses.
 
-------------------------------------------------------------------------
+<br>
 
 ## 2. Where `CorsRegistry` fits
 
@@ -113,9 +105,7 @@ registry.addMapping("/api/**")
         .allowedMethods("GET", "POST");
 ```
 
-------------------------------------------------------------------------
-
-# Part I --- The mapping
+<br>
 
 ## 3. `addMapping(String pathPattern)`
 
