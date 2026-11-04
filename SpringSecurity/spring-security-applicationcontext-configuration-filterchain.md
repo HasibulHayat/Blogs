@@ -1,0 +1,1232 @@
+# Understanding Spring's ApplicationContext and Spring Security Configuration
+
+A beginner-friendly guide to `ApplicationContext`, `@Configuration`,
+`@Bean`, `HttpSecurity`, `SecurityFilterChain`, and why Spring Security
+uses a filter chain.
+
+The examples use a Spring Boot application with Spring Security and a
+JWT-based authentication approach.
+
+------------------------------------------------------------------------
+
+# 1. Start with the big picture
+
+Imagine an application contains these classes:
+
+-   `AuthService`
+-   `JwtService`
+-   `UserAuthRepo`
+-   `SecurityErrorHandler`
+-   `PasswordEncoder`
+-   `SecurityConfig`
+
+These classes need objects to do their work. For example, `AuthService`
+needs a repository, a password encoder, and a JWT service.
+
+One way to create and connect all these objects would be to instantiate
+them manually with `new`. But doing that everywhere would become
+difficult to maintain.
+
+Spring provides a container that creates and manages objects for us.
+
+# 2. What is ApplicationContext?
+
+## 2.1 The simple explanation
+
+`ApplicationContext` is Spring's container for managing application
+objects.
+
+It is responsible for creating, configuring, and managing objects known
+as **Spring beans**.
+
+Think of it as a central object manager for your application.
+
+Instead of every class creating all the objects it needs, Spring can
+create those objects and provide them where required.
+
+For example:
+
+``` java
+@Service
+public class AuthService {
+
+    private final JwtService jwtService;
+    private final UserAuthRepo userAuthRepo;
+
+    public AuthService(
+            JwtService jwtService,
+            UserAuthRepo userAuthRepo
+    ) {
+        this.jwtService = jwtService;
+        this.userAuthRepo = userAuthRepo;
+    }
+}
+```
+
+`AuthService` needs `JwtService` and `UserAuthRepo`.
+
+If those dependencies are Spring beans, Spring can provide them when it
+creates `AuthService`. You do not need to manually instantiate and
+connect all three objects.
+
+## 2.2 What is a bean?
+
+A **bean** is an object that is created and managed by the Spring
+container.
+
+Common ways to register beans include:
+
+-   `@Component`
+-   `@Service`
+-   `@Repository`
+-   `@Controller`
+-   `@RestController`
+-   A method annotated with `@Bean` inside a configuration class
+
+These annotations have different roles, but they all participate in
+Spring's bean-management system.
+
+## 2.3 How does Spring discover classes?
+
+Spring Boot applications commonly use component scanning.
+
+For example:
+
+``` java
+@SpringBootApplication
+public class BackendApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(BackendApplication.class, args);
+    }
+}
+```
+
+`@SpringBootApplication` includes component-scanning behavior. Spring
+scans the application's package and its subpackages for eligible
+components.
+
+For example:
+
+``` java
+@Service
+public class JwtService {
+}
+```
+
+Spring discovers the class and registers it as a bean.
+
+Spring Data also creates repository implementations and makes them
+available as beans:
+
+``` java
+@Repository
+public interface UserAuthRepo
+        extends JpaRepository<UserAuth, UUID> {
+}
+```
+
+## 2.4 How dependency injection fits in
+
+Dependency Injection (DI) means an object receives the dependencies it
+needs from an outside source instead of creating those dependencies
+itself.
+
+In Spring, the container commonly performs this job.
+
+``` java
+@Service
+public class AuthService {
+
+    private final JwtService jwtService;
+
+    public AuthService(JwtService jwtService) {
+        this.jwtService = jwtService;
+    }
+}
+```
+
+The constructor says that `AuthService` needs a `JwtService`. Spring
+looks for a suitable bean and supplies it. This is called **constructor
+injection**.
+
+A simplified picture:
+
+``` text
+                 Spring ApplicationContext
+                 (manages application beans)
+                           |
+             +-------------+-------------+
+             |             |             |
+             v             v             v
+         JwtService    UserAuthRepo   AuthService
+                                          ^
+                                          |
+                           receives JwtService and
+                           UserAuthRepo as dependencies
+```
+
+The diagram is conceptual: the repository and service are separate
+managed objects, and Spring wires dependencies when creating the
+service.
+
+## 2.5 Does ApplicationContext create every Java object?
+
+No. Spring manages objects registered as beans. Your application can
+still create ordinary Java objects with `new`.
+
+For example:
+
+``` java
+LoginRequest request = new LoginRequest();
+```
+
+A request DTO usually does not need to be a Spring bean. It is an
+ordinary object representing request data.
+
+-   **Spring bean:** managed by Spring's container.
+-   **Ordinary Java object:** created and managed by your code or
+    another library.
+
+### Remember
+
+`ApplicationContext` is the Spring container that manages beans and
+helps connect their dependencies.
+
+------------------------------------------------------------------------
+
+# 3. What is `@Configuration`?
+
+Consider:
+
+``` java
+@Configuration
+public class SecurityConfig {
+}
+```
+
+`@Configuration` is a Spring annotation that marks a class as a source
+of bean definitions and configuration instructions.
+
+In simple terms, it tells Spring:
+
+> This class contains configuration that Spring should process.
+
+A configuration class is often used when you want to define beans
+explicitly or configure a framework.
+
+For example, Spring Security needs to know how you want HTTP security
+configured. A class named `SecurityConfig` is a natural place to define
+those instructions.
+
+## 3.1 Why separate configuration classes?
+
+You could technically put configuration in different places, but
+separating responsibilities makes an application easier to understand.
+
+``` text
+com.example.backend
+    BackendApplication.java
+
+    config
+        SecurityConfig.java
+        CorsConfig.java
+        JpaConfig.java
+
+    service
+        AuthService.java
+        JwtService.java
+
+    security
+        JwtAuthFilter.java
+        SecurityErrorHandler.java
+```
+
+This is an organizational choice, not a strict requirement. The key idea
+is that configuration classes keep framework configuration separate from
+business logic.
+
+## 3.2 What happens when Spring finds `@Configuration`?
+
+When Spring processes the configuration class, it looks for
+configuration methods such as methods annotated with `@Bean`.
+
+It processes those methods and registers their returned objects as
+beans.
+
+``` java
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public String applicationLabel() {
+        return "Apartment Management System";
+    }
+}
+```
+
+The returned `String` object is registered as a bean. This is a simple
+demonstration; in real applications, `@Bean` methods are more commonly
+used to register useful framework objects or configured objects from
+libraries.
+
+### Remember
+
+`@Configuration` marks a class that provides configuration instructions
+to Spring. It is not itself a security filter or an authentication
+mechanism.
+
+------------------------------------------------------------------------
+
+# 4. What is `@Bean`?
+
+`@Bean` is used on a method to tell Spring that the object returned by
+that method should be registered in the ApplicationContext.
+
+Consider:
+
+``` java
+@Configuration
+public class SecurityConfig {
+
+    @Bean
+    public BCryptPasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(12);
+    }
+}
+```
+
+Let's break it down:
+
+1.  Spring processes `SecurityConfig` because it is a configuration
+    class.
+2.  Spring finds the `passwordEncoder()` method.
+3.  Spring invokes the method as part of creating the application
+    context.
+4.  The method returns a `BCryptPasswordEncoder`.
+5.  Spring registers that object as a bean.
+
+Other Spring-managed classes can then receive the bean through
+dependency injection.
+
+``` java
+@Service
+public class AuthService {
+
+    private final BCryptPasswordEncoder passwordEncoder;
+
+    public AuthService(BCryptPasswordEncoder passwordEncoder) {
+        this.passwordEncoder = passwordEncoder;
+    }
+}
+```
+
+Spring supplies the registered encoder when it creates `AuthService`.
+
+## 4.1 Why use `@Bean` instead of `@Component`?
+
+Both can result in an object being registered as a bean, but they are
+used differently.
+
+### `@Component`
+
+You put `@Component` on a class:
+
+``` java
+@Component
+public class ReportFormatter {
+}
+```
+
+Spring discovers the class through component scanning and creates a bean
+for it. `@Service`, `@Repository`, and `@Controller` are specialized
+component annotations.
+
+### `@Bean`
+
+You put `@Bean` on a method:
+
+``` java
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public ReportFormatter reportFormatter() {
+        return new ReportFormatter();
+    }
+}
+```
+
+This is useful when:
+
+-   You want to configure how an object is constructed.
+-   The class comes from an external library, so you cannot add
+    `@Component` to it.
+-   You want to register a particular configured instance.
+
+For example, you do not annotate Spring Security's `SecurityFilterChain`
+interface with `@Component`. Instead, you define a bean method that
+returns a configured chain.
+
+## 4.2 What does the `12` mean in BCrypt?
+
+``` java
+return new BCryptPasswordEncoder(12);
+```
+
+The number `12` is BCrypt's strength, also called its work factor.
+
+It controls how computationally expensive password hashing is. A higher
+value generally makes hashing and verification slower, increasing the
+cost of password-guessing attempts.
+
+It is not the password length and it is not the number of hashing
+algorithms.
+
+### Remember
+
+-   `@Configuration`: marks a configuration class.
+-   `@Bean`: registers the object returned by a method as a Spring bean.
+-   `ApplicationContext`: manages that bean and can inject it into other
+    beans.
+
+------------------------------------------------------------------------
+
+# 5. What is `HttpSecurity`?
+
+Consider this method:
+
+``` java
+@Bean
+public SecurityFilterChain securityFilterChain(HttpSecurity http)
+        throws Exception {
+
+    // Configure security here
+
+    return http.build();
+}
+```
+
+The parameter is:
+
+``` java
+HttpSecurity http
+```
+
+## 5.1 The simple explanation
+
+`HttpSecurity` is a Spring Security configuration builder.
+
+It gives you an API for describing how HTTP requests should be secured.
+
+You use it to configure things such as:
+
+-   Which requests are public.
+-   Which requests require authentication.
+-   Whether form login is enabled.
+-   Whether HTTP Basic authentication is enabled.
+-   CSRF behavior.
+-   Session-management behavior.
+-   Exception handling.
+-   Which custom filters should be added and where.
+
+Think of `HttpSecurity` as a control panel or builder.
+
+You configure the security behavior using it. Once configuration is
+complete, you call `build()` to produce a `SecurityFilterChain`.
+
+## 5.2 Where does the `http` object come from?
+
+You might wonder why you do not write:
+
+``` java
+HttpSecurity http = new HttpSecurity();
+```
+
+Instead, Spring supplies the `HttpSecurity` parameter to the `@Bean`
+method.
+
+Spring Security prepares the builder and makes it available for
+configuring the web security chain.
+
+This is part of Spring Security's configuration infrastructure.
+
+The important point is that you normally configure the provided
+`HttpSecurity`; you do not construct it yourself.
+
+## 5.3 A small example
+
+``` java
+@Bean
+public SecurityFilterChain securityFilterChain(HttpSecurity http)
+        throws Exception {
+
+    http.authorizeHttpRequests(auth -> auth
+            .requestMatchers("/public/**").permitAll()
+            .anyRequest().authenticated()
+    );
+
+    return http.build();
+}
+```
+
+Read this in ordinary English:
+
+-   Configure HTTP request authorization.
+-   Requests matching `/public/**` are allowed without authentication.
+-   All other requests must be authenticated.
+-   Build the configured security filter chain.
+
+Notice that `HttpSecurity` is not itself the filter chain. It is the
+builder used to configure the chain.
+
+------------------------------------------------------------------------
+
+# 6. What is a `SecurityFilterChain`?
+
+This is one of the most important concepts in Spring Security.
+
+## 6.1 First, understand a servlet filter
+
+A servlet filter is a component that can inspect or process an HTTP
+request before it reaches the servlet that handles the request. A filter
+can also process the response as it travels back.
+
+A simplified request flow:
+
+``` text
+HTTP Request
+     |
+     v
+Servlet Filter Chain
+     |
+     v
+DispatcherServlet
+     |
+     v
+Controller
+     |
+     v
+Service
+     |
+     v
+Repository
+     |
+     v
+Database
+```
+
+Filters can perform tasks before the controller is reached.
+
+For example, a filter might:
+
+-   Log request information.
+-   Add or inspect headers.
+-   Check authentication information.
+-   Reject a request.
+-   Pass the request to the next filter.
+
+A filter normally continues the chain by calling:
+
+``` java
+chain.doFilter(request, response);
+```
+
+If a filter does not continue the chain, it can prevent the request from
+reaching the next component.
+
+## 6.2 Spring Security uses filters
+
+Spring Security uses servlet filters to implement much of its
+web-security behavior.
+
+Different filters have different responsibilities. For example, Spring
+Security has filters involved in:
+
+-   Loading and managing the security context.
+-   Processing authentication mechanisms.
+-   Translating security exceptions.
+-   Applying authorization rules.
+
+Your custom JWT filter is also a servlet filter. It examines a request
+for a JWT and, when appropriate, establishes an authenticated identity
+for that request.
+
+Rather than making one enormous filter responsible for every security
+task, Spring Security organizes security behavior into multiple filters.
+
+## 6.3 So what exactly is SecurityFilterChain?
+
+`SecurityFilterChain` is a Spring Security interface representing a
+security filter chain.
+
+It describes:
+
+1.  Which requests the chain applies to.
+2.  Which security filters belong to that chain.
+
+In simplified terms:
+
+``` text
+SecurityFilterChain
+    |
+    +-- Request matcher
+    |
+    +-- Security filter 1
+    |
+    +-- Security filter 2
+    |
+    +-- Security filter 3
+    |
+    +-- Custom JWT filter
+    |
+    +-- Other security filters
+```
+
+The actual chain contains a particular ordered set of filters. The exact
+filters and their order depend on your configuration and Spring Security
+version.
+
+A useful distinction:
+
+-   `Filter` is a servlet API interface implemented by individual
+    filters.
+-   `SecurityFilterChain` is a Spring Security interface representing a
+    matching rule and its filters.
+-   `FilterChainProxy` is the central Spring Security filter that
+    selects and invokes the appropriate security chain.
+
+## 6.4 Why is SecurityFilterChain needed?
+
+Imagine you tried to secure your application without an organized filter
+chain.
+
+You might end up with separate code scattered across your application:
+
+-   One place checks JWTs.
+-   Another place checks whether the user is authenticated.
+-   Another place checks permissions.
+-   Another place handles authentication failures.
+-   Another place handles access-denied responses.
+
+It would be difficult to control the order and behavior of all those
+checks.
+
+The filter chain gives Spring Security an organized, ordered
+request-processing pipeline.
+
+It provides several benefits:
+
+### Benefit 1: A defined order
+
+Security operations need to happen in a sensible order.
+
+For example, a JWT filter needs an opportunity to establish
+authentication before authorization rules decide whether the request is
+authenticated.
+
+The chain provides an ordered sequence of filters.
+
+### Benefit 2: Separation of responsibilities
+
+Each filter can focus on a particular responsibility. One filter may
+process authentication, while another handles authorization or
+security-context behavior.
+
+### Benefit 3: Centralized security configuration
+
+You configure security behavior in one place instead of scattering
+security logic throughout controllers.
+
+### Benefit 4: Different security rules for different requests
+
+An application can have multiple `SecurityFilterChain` beans.
+
+For example, an application might use one chain for API requests and
+another for a separate management area.
+
+Each chain can have its own request matcher, filters, and security
+rules.
+
+### Benefit 5: Customization
+
+You can add your own filters, such as a JWT filter, at a chosen position
+relative to Spring Security's known filters.
+
+------------------------------------------------------------------------
+
+# 7. What is `FilterChainProxy`?
+
+To understand how a `SecurityFilterChain` is used, we need one more
+name: `FilterChainProxy`.
+
+Spring Security integrates with the servlet filter infrastructure
+through a central filter called `FilterChainProxy`.
+
+Its important job is to select the appropriate `SecurityFilterChain` for
+the incoming request and invoke the security filters in that chain.
+
+A simplified picture:
+
+``` text
+                 Incoming HTTP Request
+                           |
+                           v
+                  FilterChainProxy
+                           |
+                 Which chain matches?
+                           |
+             +-------------+-------------+
+             |                           |
+             v                           v
+       SecurityFilterChain A       SecurityFilterChain B
+       /api/**                      /management/**
+             |                           |
+             v                           v
+       Its security filters        Its security filters
+```
+
+This is especially useful when an application has multiple security
+chains.
+
+A few important details:
+
+-   Spring Security's `FilterChainProxy` is itself a servlet filter.
+-   It selects a matching `SecurityFilterChain`.
+-   It delegates processing to the filters in that chain.
+-   The first matching chain is used. If no configured chain matches,
+    the request does not receive the protection of one of those
+    configured chains.
+
+In a typical Spring Security setup, the `DelegatingFilterProxy`
+registered with the servlet container delegates to Spring Security's
+`FilterChainProxy` bean.
+
+You do not normally need to create these infrastructure objects
+yourself.
+
+## 7.1 Do not confuse these three things
+
+  -----------------------------------------------------------------------
+  Name                                What it represents
+  ----------------------------------- -----------------------------------
+  `Filter`                            An individual servlet filter
+
+  `SecurityFilterChain`               A matching rule and an ordered set
+                                      of security filters
+
+  `FilterChainProxy`                  The central Spring Security filter
+                                      that selects and invokes a security
+                                      chain
+  -----------------------------------------------------------------------
+
+This distinction is worth remembering.
+
+------------------------------------------------------------------------
+
+# 8. Understanding your SecurityConfig
+
+Now let's connect all these concepts to the configuration you have been
+studying.
+
+Here is a simplified version of your configuration:
+
+``` java
+@Configuration
+public class SecurityConfig {
+
+    private final JwtService jwtService;
+    private final UserSessionRepo userSessionRepo;
+    private final SecurityErrorHandler securityErrorHandler;
+
+    public SecurityConfig(
+            JwtService jwtService,
+            UserSessionRepo userSessionRepo,
+            SecurityErrorHandler securityErrorHandler
+    ) {
+        this.jwtService = jwtService;
+        this.userSessionRepo = userSessionRepo;
+        this.securityErrorHandler = securityErrorHandler;
+    }
+
+    @Bean
+    public BCryptPasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(12);
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http)
+            throws Exception {
+
+        http.cors(cors -> {});
+        http.csrf(AbstractHttpConfigurer::disable);
+        http.formLogin(AbstractHttpConfigurer::disable);
+        http.httpBasic(AbstractHttpConfigurer::disable);
+        http.logout(AbstractHttpConfigurer::disable);
+
+        http.sessionManagement(session ->
+                session.sessionCreationPolicy(
+                        SessionCreationPolicy.STATELESS
+                )
+        );
+
+        http.exceptionHandling(exception -> exception
+                .authenticationEntryPoint(securityErrorHandler)
+                .accessDeniedHandler(securityErrorHandler)
+        );
+
+        http.addFilterBefore(
+                new JwtAuthFilter(jwtService, userSessionRepo),
+                UsernamePasswordAuthenticationFilter.class
+        );
+
+        http.authorizeHttpRequests(auth -> auth
+                .requestMatchers(
+                        "/api/v1/auth/**",
+                        "/api/v1/users/invitation/accept"
+                ).permitAll()
+                .anyRequest().authenticated()
+        );
+
+        return http.build();
+    }
+}
+```
+
+Let's identify the concepts.
+
+## 8.1 `@Configuration`
+
+``` java
+@Configuration
+public class SecurityConfig
+```
+
+Spring recognizes this as a configuration class.
+
+## 8.2 Constructor injection
+
+``` java
+public SecurityConfig(
+        JwtService jwtService,
+        UserSessionRepo userSessionRepo,
+        SecurityErrorHandler securityErrorHandler
+)
+```
+
+Spring injects these dependencies because they are available as beans.
+
+## 8.3 `@Bean` for PasswordEncoder
+
+``` java
+@Bean
+public BCryptPasswordEncoder passwordEncoder() {
+    return new BCryptPasswordEncoder(12);
+}
+```
+
+Spring registers the password encoder as a bean.
+
+Other beans, such as `AuthService`, can receive it through dependency
+injection.
+
+## 8.4 `@Bean` for SecurityFilterChain
+
+``` java
+@Bean
+public SecurityFilterChain securityFilterChain(HttpSecurity http)
+```
+
+This tells Spring that the returned `SecurityFilterChain` should be
+registered as a bean.
+
+Spring supplies the `HttpSecurity` builder.
+
+## 8.5 Configure the builder
+
+The statements inside the method configure different parts of HTTP
+security:
+
+``` java
+http.csrf(...);
+http.sessionManagement(...);
+http.exceptionHandling(...);
+http.addFilterBefore(...);
+http.authorizeHttpRequests(...);
+```
+
+Each statement adds or changes part of the security configuration.
+
+## 8.6 Build the chain
+
+``` java
+return http.build();
+```
+
+This creates the configured `SecurityFilterChain`, which Spring
+registers in the ApplicationContext.
+
+------------------------------------------------------------------------
+
+# 9. What happens when the application starts?
+
+Let's put the startup process together.
+
+``` text
+Spring Boot application starts
+            |
+            v
+Spring creates the ApplicationContext
+            |
+            v
+Spring discovers configuration classes
+            |
+            v
+Spring processes SecurityConfig
+            |
+            +-----------------------------+
+            |                             |
+            v                             v
+    Creates PasswordEncoder       Calls securityFilterChain()
+    bean                          and supplies HttpSecurity
+                                          |
+                                          v
+                                  Your security configuration
+                                  is applied to HttpSecurity
+                                          |
+                                          v
+                                      http.build()
+                                          |
+                                          v
+                                  SecurityFilterChain bean
+                                          |
+                                          v
+                              Registered in ApplicationContext
+```
+
+The important point is that your `SecurityConfig` method is primarily
+configuring the security infrastructure during application startup. It
+is not executed from scratch for every HTTP request.
+
+The configured filter chain is then used when requests arrive.
+
+------------------------------------------------------------------------
+
+# 10. What happens when an HTTP request arrives?
+
+Now distinguish application startup from request processing.
+
+The chain has already been built.
+
+When a request arrives, a simplified flow is:
+
+``` text
+HTTP Request
+     |
+     v
+Servlet container's filter infrastructure
+     |
+     v
+DelegatingFilterProxy
+     |
+     v
+FilterChainProxy
+     |
+     v
+Select matching SecurityFilterChain
+     |
+     v
+Execute its security filters in order
+     |
+     v
+DispatcherServlet
+     |
+     v
+Controller
+     |
+     v
+Service
+     |
+     v
+Repository
+     |
+     v
+Database
+```
+
+This is the broad request path. A request may be rejected by a security
+filter before it ever reaches the controller.
+
+For your JWT-based setup, your custom `JwtAuthFilter` is part of the
+selected security chain. It can inspect the JWT and establish
+authentication before the authorization rules are applied.
+
+------------------------------------------------------------------------
+
+# 11. Important distinctions
+
+These terms are related, but they are not interchangeable.
+
+  -----------------------------------------------------------------------
+  Concept                             Easy explanation
+  ----------------------------------- -----------------------------------
+  `ApplicationContext`                Spring's container for managing
+                                      beans
+
+  Bean                                An object managed by Spring
+
+  `@Configuration`                    Marks a class that provides
+                                      configuration
+
+  `@Bean`                             Registers a method's returned
+                                      object as a bean
+
+  `HttpSecurity`                      Builder used to configure HTTP
+                                      security
+
+  `SecurityFilterChain`               The configured security chain and
+                                      its matching rule
+
+  `FilterChainProxy`                  Selects and invokes the appropriate
+                                      security chain
+
+  `Filter`                            An individual component that
+                                      processes requests and responses
+  -----------------------------------------------------------------------
+
+A particularly important pair:
+
+**`HttpSecurity` is the builder. `SecurityFilterChain` is the configured
+result.**
+
+And another:
+
+**`SecurityFilterChain` represents the chain. `FilterChainProxy` selects
+and invokes it.**
+
+------------------------------------------------------------------------
+
+# 12. Final mental model
+
+If you remember only one picture from this guide, remember this:
+
+``` text
+                    APPLICATION STARTUP
+                           |
+                           v
+                  ApplicationContext
+                  manages Spring beans
+                           |
+                           v
+                    SecurityConfig
+                  marked @Configuration
+                           |
+                           v
+                 @Bean method receives
+                     HttpSecurity
+                           |
+                           v
+                Configure HTTP security
+                           |
+                           v
+                     http.build()
+                           |
+                           v
+                 SecurityFilterChain
+                  registered as a bean
+
+
+                    INCOMING REQUEST
+                           |
+                           v
+                   FilterChainProxy
+                           |
+                           v
+                 Select matching chain
+                           |
+                           v
+                 SecurityFilterChain
+                           |
+                           v
+                  Security filters
+                           |
+                           v
+                 Spring MVC Controller
+```
+
+The two halves are connected:
+
+-   At startup, Spring builds and registers the security chain.
+-   During request processing, Spring Security uses that chain to
+    process incoming requests.
+
+That is the foundation of how Spring Security's HTTP configuration
+works.
+
+------------------------------------------------------------------------
+
+# 13. Check your understanding
+
+Try answering these questions without looking back.
+
+1.  What is the difference between `ApplicationContext` and a Spring
+    bean?
+2.  What does `@Configuration` tell Spring?
+3.  What does `@Bean` do?
+4.  Why do we use `HttpSecurity` instead of manually creating a
+    `SecurityFilterChain`?
+5.  What does `http.build()` produce?
+6.  Why does Spring Security need a `SecurityFilterChain`?
+7.  What is the difference between `SecurityFilterChain` and
+    `FilterChainProxy`?
+8.  At what stage is your `SecurityFilterChain` built: application
+    startup or every incoming request?
+
+## Suggested answers
+
+```{=html}
+<details>
+```
+```{=html}
+<summary>
+```
+1.  ApplicationContext and bean
+    ```{=html}
+    </summary>
+    ```
+
+The ApplicationContext is the container that manages beans. A bean is an
+individual object managed by that container.
+```{=html}
+</details>
+```
+```{=html}
+<details>
+```
+```{=html}
+<summary>
+```
+2.  @Configuration
+    ```{=html}
+    </summary>
+    ```
+
+It marks a class as a source of configuration instructions for Spring.
+```{=html}
+</details>
+```
+```{=html}
+<details>
+```
+```{=html}
+<summary>
+```
+3.  @Bean
+    ```{=html}
+    </summary>
+    ```
+
+It tells Spring to register the object returned by the annotated method
+as a bean.
+```{=html}
+</details>
+```
+```{=html}
+<details>
+```
+```{=html}
+<summary>
+```
+4.  HttpSecurity
+    ```{=html}
+    </summary>
+    ```
+
+It is Spring Security's builder for configuring HTTP security. Spring
+supplies it to the configuration method, and we use it to describe the
+security setup.
+```{=html}
+</details>
+```
+```{=html}
+<details>
+```
+```{=html}
+<summary>
+```
+5.  http.build()
+    ```{=html}
+    </summary>
+    ```
+
+It produces the configured SecurityFilterChain.
+```{=html}
+</details>
+```
+```{=html}
+<details>
+```
+```{=html}
+<summary>
+```
+6.  Why SecurityFilterChain?
+    ```{=html}
+    </summary>
+    ```
+
+It organizes security filters into an ordered chain and associates that
+chain with requests it should handle.
+```{=html}
+</details>
+```
+```{=html}
+<details>
+```
+```{=html}
+<summary>
+```
+7.  SecurityFilterChain and FilterChainProxy
+    ```{=html}
+    </summary>
+    ```
+
+SecurityFilterChain represents a matching rule and its security filters.
+FilterChainProxy selects the appropriate chain and invokes its filters.
+```{=html}
+</details>
+```
+```{=html}
+<details>
+```
+```{=html}
+<summary>
+```
+8.  When is the chain built?
+    ```{=html}
+    </summary>
+    ```
+
+It is built during application startup as Spring creates the application
+context and its beans. It is then used to process incoming requests.
+```{=html}
+</details>
+```
+
+------------------------------------------------------------------------
+
+# 14. What to study next
+
+A natural next topic is the custom `JwtAuthFilter`.
+
+It will let you connect the concepts in this guide to the actual
+authentication flow:
+
+-   Servlet filters
+-   Filter ordering
+-   `SecurityFilterChain`
+-   `Authentication`
+-   `SecurityContextHolder`
+-   JWT validation
+
+Understanding those concepts will make the rest of Spring Security much
+easier.
