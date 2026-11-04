@@ -53,10 +53,12 @@ Think of an apartment building:
 Knowing who you are does not automatically mean you can enter every
 area.
 
-------------------------------------------------------------------------
+<br>
 
 ## 2. The most important concepts
 
+
+```
   -----------------------------------------------------------------------
   Concept                             Easy explanation
   ----------------------------------- -----------------------------------
@@ -96,11 +98,12 @@ area.
   PasswordEncoder                     Hashes passwords and verifies
                                       submitted passwords
   -----------------------------------------------------------------------
+```
 
 You do not need to master every class immediately. Start with the
 request flow.
 
-------------------------------------------------------------------------
+<br>
 
 ## 3. How a request travels through Spring Security
 
