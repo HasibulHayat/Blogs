@@ -1,13 +1,15 @@
-# Spring Security --- A Beginner-Friendly Guide
+<br>
 
-A practical introduction to Spring Security, with examples based on a
-Spring Boot REST API for an apartment-management system.
+# Spring Security
+
+
 
 This guide focuses on understanding **what Spring Security does, how a
 request travels through it, and why each piece exists**. The goal is not
 to memorize configuration code.
 
-------------------------------------------------------------------------
+<br>
+<br>
 
 ## 1. First, what problem does Spring Security solve?
 
