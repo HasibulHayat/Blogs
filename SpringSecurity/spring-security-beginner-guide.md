@@ -62,6 +62,7 @@ area.
   -----------------------------------------------------------------------
   Concept                             Easy explanation
   ----------------------------------- -----------------------------------
+
   Authentication                      Verifying who the user is
 
   Authorization                       Checking what the user is allowed
@@ -97,7 +98,8 @@ area.
 
   PasswordEncoder                     Hashes passwords and verifies
                                       submitted passwords
-  -----------------------------------------------------------------------
+
+
 ```
 
 You do not need to master every class immediately. Start with the
@@ -180,7 +182,7 @@ If the request passes security, it can reach the controller.
 It processes the request and then continues the chain with
 `filterChain.doFilter(request, response)`.
 
-------------------------------------------------------------------------
+<br>
 
 ## 4. Authentication: how does Spring know who the user is?
 
