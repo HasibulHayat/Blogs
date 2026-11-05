@@ -1,19 +1,12 @@
-# JWT with Java and Spring Boot: A Beginner-Friendly Guide
+<br>
+
+# JWT
 
 A practical, from-zero guide to understanding JSON Web Tokens (JWT) and
 using them in a Java/Spring Boot application.
 
-This guide assumes you are new to JWT. It explains the ideas first, then
-builds toward a small Spring Boot API that protects an endpoint using a
-JWT.
-
-> **Version note:** The examples use modern Spring Boot 3 / Spring
-> Security 6 style configuration and Java 17 or later. Dependency
-> versions should normally be managed by your Spring Boot parent or BOM.
-> Library APIs can change, so check the documentation for the versions
-> in your project.
-
-------------------------------------------------------------------------
+<br>
+Mbr>
 
 ## 1. First, what problem are we trying to solve?
 
@@ -52,6 +45,8 @@ Remember: JWT is not a complete login system. Spring Security still
 needs to authenticate requests, validate tokens, and enforce
 permissions.
 
+<br>
+
 ## 2. A simple real-world analogy
 
 Imagine a school gives you an identity card.
@@ -76,6 +71,8 @@ There is one important difference: a JWT is not automatically
 trustworthy just because it contains a name or role. The server must
 verify it.
 
+<br>
+
 ## 3. What does a JWT look like?
 
 A common signed JWT has three parts separated by dots:
@@ -98,11 +95,17 @@ This is only an illustration, not a token to use.
 
 The three parts are:
 
+```
+
   Part        Meaning
   ----------- --------------------------------------------
   Header      Describes the token and signing algorithm
   Payload     Contains claims (information)
   Signature   Helps detect whether the token was changed
+
+```
+
+<br>
 
 ## 4. What is JSON?
 
@@ -127,6 +130,8 @@ Here:
 -   `username` is a key, and `"rahim"` is its value.
 -   `role` is a key, and `"USER"` is its value.
 
+<br>
+
 ## 5. Understanding the JWT header
 
 Example header:
@@ -145,6 +150,8 @@ Example header:
 SHA-256.
 
 The header is Base64URL-encoded to create the first part of the JWT.
+
+<br>
 
 ## 6. Understanding the payload and claims
 
@@ -166,6 +173,8 @@ Example:
 
 Common claim names:
 
+```
+
   Claim   Meaning
   ------- ----------------------------------
   `sub`   Subject, often the user's ID
@@ -175,6 +184,8 @@ Common claim names:
   `exp`   Expiration time
   `nbf`   Not valid before this time
   `jti`   Unique token ID
+
+```
 
 The standard time claims use Unix time: seconds since 1 January 1970
 UTC.
@@ -196,6 +207,8 @@ Never put these things in a normal JWT payload:
 
 The signature helps detect changes. It does not hide the contents.
 
+<br>
+
 ## 7. What is Base64URL encoding?
 
 JWT uses Base64URL encoding to represent its header and payload as text.
@@ -207,6 +220,8 @@ sentence private.
 
 You do not need to implement Base64URL yourself. A JWT library handles
 it.
+
+<br>
 
 ## 8. What is the signature?
 
@@ -259,6 +274,8 @@ content has been changed, verification should fail.
 
 Use a trusted library. Do not write your own cryptographic signing code.
 
+<br>
+
 ## 9. How JWT authentication works
 
 Let's follow a user named Rahim.
@@ -290,6 +307,8 @@ Client                         Spring Boot API
   |                                   | Set authentication
   |<------------- profile ------------|
 ```
+
+<br>
 
 ## 10. Access token and refresh token
 
