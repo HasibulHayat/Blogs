@@ -6,7 +6,7 @@ A practical, from-zero guide to understanding JSON Web Tokens (JWT) and
 using them in a Java/Spring Boot application.
 
 <br>
-Mbr>
+<br>
 
 ## 1. First, what problem are we trying to solve?
 
