@@ -750,6 +750,8 @@ The key point:
 -   `AuthenticationContext` is the **helper that retrieves that data
     from Spring Security**.
 
+<br>
+
 ## 18. How does the JWT filter put `AuthenticatedUser` into the SecurityContext?
 
 A simplified example:
