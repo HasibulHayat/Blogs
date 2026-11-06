@@ -1,0 +1,718 @@
+# TenantContextResolver --- Beginner-Friendly Explanation
+
+## 1. What does this class do?
+
+`TenantContextResolver` determines which context an incoming HTTP
+request belongs to:
+
+-   **PLATFORM** --- a request for platform-level functionality.
+-   **TENANT** --- a request belonging to a particular tenant.
+
+In a multi-tenant application, the same backend serves multiple tenants.
+Before processing a tenant-level request, the application needs to
+identify which tenant the request belongs to.
+
+This class resolves that information and returns it as a
+`RequestContext`.
+
+## 2. The complete code
+
+``` java
+package com.example.backend.security;
+
+import com.example.backend.dto.auth.RequestContext;
+import com.example.backend.model.AccessContext;
+import com.example.backend.repo.TenantRepo;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.stereotype.Component;
+
+import java.util.Optional;
+
+@Component
+public class TenantContextResolver {
+
+    private final TenantRepo tenantRepo;
+
+    public TenantContextResolver(TenantRepo tenantRepo) {
+        this.tenantRepo = tenantRepo;
+    }
+
+    public Optional<RequestContext> resolve(HttpServletRequest request) {
+
+        String requestUri = request.getRequestURI();
+
+        if (requestUri.startsWith("/api/v1/platform/")) {
+            return Optional.of(
+                    new RequestContext(AccessContext.PLATFORM, null)
+            );
+        }
+
+        String domain = request.getServerName();
+
+        return tenantRepo
+                .findByDomainIgnoreCaseAndDeletedAtIsNull(domain)
+                .map(tenant -> new RequestContext(
+                        AccessContext.TENANT,
+                        tenant.getId()
+                ));
+    }
+}
+```
+
+## 3. Understanding the imports
+
+``` java
+import com.example.backend.dto.auth.RequestContext;
+```
+
+`RequestContext` is the object this class returns. It carries the
+resolved access context and, when applicable, the tenant ID.
+
+For example, it might contain:
+
+``` java
+new RequestContext(AccessContext.TENANT, tenantId)
+```
+
+That means: this request belongs to the tenant identified by `tenantId`.
+
+``` java
+import com.example.backend.model.AccessContext;
+```
+
+`AccessContext` represents the type of context:
+
+-   `PLATFORM`
+-   `TENANT`
+
+It is likely an enum in your project.
+
+``` java
+import com.example.backend.repo.TenantRepo;
+```
+
+This is your tenant repository. The resolver uses it to look up a tenant
+using the domain from the incoming request.
+
+``` java
+import jakarta.servlet.http.HttpServletRequest;
+```
+
+This represents the incoming HTTP request.
+
+It gives your application access to request information such as:
+
+-   The requested URI/path
+-   The server name (domain or host)
+-   The HTTP method
+-   Headers
+-   Query parameters
+
+For this class, the important methods are `getRequestURI()` and
+`getServerName()`.
+
+``` java
+import java.util.Optional;
+```
+
+`Optional` represents a value that may or may not exist.
+
+Here, the resolver may successfully identify a request context, or it
+may fail to find a matching tenant. Returning `Optional<RequestContext>`
+allows it to represent both outcomes.
+
+## 4. Understanding the class
+
+``` java
+@Component
+public class TenantContextResolver {
+```
+
+`@Component` tells Spring that this is a Spring-managed component.
+
+That means Spring creates and manages an instance of this class. Other
+Spring-managed classes can inject it when they need to resolve a
+request's tenant context.
+
+Think of it as registering this class with Spring so that the
+application can use it.
+
+## 5. The TenantRepo field
+
+``` java
+private final TenantRepo tenantRepo;
+```
+
+This declares a dependency on `TenantRepo`.
+
+The resolver needs the repository because, for tenant-level requests, it
+must look up which tenant owns the requested domain.
+
+`private` means the field can only be accessed directly inside this
+class.
+
+`final` means the field must be assigned once, normally through the
+constructor, and cannot later be reassigned.
+
+## 6. Constructor injection
+
+``` java
+public TenantContextResolver(TenantRepo tenantRepo) {
+    this.tenantRepo = tenantRepo;
+}
+```
+
+Spring sees that this class needs a `TenantRepo` and supplies one when
+creating the resolver.
+
+This is called **constructor injection**.
+
+In simple terms:
+
+1.  Spring creates or obtains the `TenantRepo` bean.
+2.  Spring passes it into this constructor.
+3.  The resolver stores it in its `tenantRepo` field.
+4.  The resolver can now use the repository.
+
+You do not need to manually create the repository with
+`new TenantRepo()`.
+
+## 7. The resolve() method
+
+``` java
+public Optional<RequestContext> resolve(HttpServletRequest request) {
+```
+
+This is the main method of the class.
+
+It accepts the incoming HTTP request and attempts to determine its
+context.
+
+It returns:
+
+``` java
+Optional<RequestContext>
+```
+
+There are two possible broad outcomes:
+
+-   A context is found, so the method returns an `Optional` containing a
+    `RequestContext`.
+-   No matching tenant is found, so it returns `Optional.empty()`.
+
+Notice that the method does not itself authenticate the user or decide
+whether the user is allowed to access the resource. It only resolves
+request context.
+
+## 8. Reading the request URI
+
+``` java
+String requestUri = request.getRequestURI();
+```
+
+`getRequestURI()` returns the path of the request.
+
+For example, if the incoming URL is:
+
+``` text
+https://woodlandsolutionsbd.com/api/v1/platform/users
+```
+
+The URI is:
+
+``` text
+/api/v1/platform/users
+```
+
+The URI tells the resolver which endpoint the client is requesting.
+
+## 9. Checking for a platform request
+
+``` java
+if (requestUri.startsWith("/api/v1/platform/")) {
+```
+
+This checks whether the request path starts with:
+
+``` text
+/api/v1/platform/
+```
+
+If it does, the resolver treats it as a platform-level request.
+
+Examples:
+
+  Request URI                   Matches?
+  ----------------------------- ----------
+  `/api/v1/platform/users`      Yes
+  `/api/v1/platform/clients`    Yes
+  `/api/v1/platform/products`   Yes
+  `/api/v1/apartments`          No
+  `/api/v1/collections`         No
+
+`startsWith()` is a Java `String` method. It checks whether a string
+begins with the supplied text.
+
+### Why check the URI first?
+
+Platform endpoints should not need a tenant lookup.
+
+For example, Woodland platform functionality might manage products,
+clients, subscriptions, or onboarding. These are platform-level
+operations rather than operations belonging to one apartment-building
+tenant.
+
+## 10. Returning a platform RequestContext
+
+``` java
+return Optional.of(
+        new RequestContext(AccessContext.PLATFORM, null)
+);
+```
+
+Let's break this down.
+
+First:
+
+``` java
+new RequestContext(AccessContext.PLATFORM, null)
+```
+
+This creates a `RequestContext` with:
+
+-   Access context: `PLATFORM`
+-   Tenant ID: `null`
+
+Why is the tenant ID null?
+
+Because this request belongs to the platform itself, not to a particular
+tenant.
+
+Then:
+
+``` java
+Optional.of(...)
+```
+
+Wraps that `RequestContext` inside an `Optional`.
+
+The method returns immediately because of the `return` statement. It
+does not continue to the tenant-domain lookup below.
+
+Conceptually, the result is:
+
+``` text
+RequestContext
+    accessContext = PLATFORM
+    tenantId      = null
+```
+
+## 11. Reading the request domain
+
+If the request is not a platform request, execution reaches:
+
+``` java
+String domain = request.getServerName();
+```
+
+`getServerName()` returns the host/server name from the HTTP request.
+
+For example:
+
+  Incoming URL                                  Server name
+  --------------------------------------------- -------------------
+  `https://elitepark.com/api/v1/apartments`     `elitepark.com`
+  `https://greenvalley.com/api/v1/apartments`   `greenvalley.com`
+  `https://api.example.com/api/v1/apartments`   `api.example.com`
+
+This is how the resolver gets the domain that it will use to identify
+the tenant.
+
+The important idea is that different tenants can use different domains
+while sharing the same backend.
+
+## 12. Looking up the tenant
+
+``` java
+return tenantRepo
+        .findByDomainIgnoreCaseAndDeletedAtIsNull(domain)
+```
+
+This calls a repository method and passes the domain.
+
+Let's understand the method name:
+
+`findByDomainIgnoreCaseAndDeletedAtIsNull`
+
+Spring Data JPA can derive a query from this method name.
+
+It means:
+
+-   Find a tenant whose `domain` matches the supplied domain.
+-   Ignore differences between uppercase and lowercase letters.
+-   Only consider tenants whose `deletedAt` field is null.
+
+For example:
+
+``` text
+Request domain: ELITEPARK.COM
+Stored domain:  elitepark.com
+```
+
+The case-insensitive comparison allows these to match.
+
+The `DeletedAtIsNull` condition excludes tenants that have been
+soft-deleted.
+
+Conceptually, the query is similar to:
+
+``` sql
+SELECT *
+FROM tenant
+WHERE LOWER(domain) = LOWER(:domain)
+  AND deleted_at IS NULL;
+```
+
+The exact SQL generated depends on your entity mapping, database, and
+repository configuration.
+
+### What does the repository return?
+
+Assuming your repository method returns `Optional<Tenant>`, there are
+two possibilities:
+
+1.  A matching tenant exists: the Optional contains that tenant.
+2.  No matching tenant exists: the Optional is empty.
+
+## 13. The map() method
+
+``` java
+.map(tenant -> new RequestContext(
+        AccessContext.TENANT,
+        tenant.getId()
+));
+```
+
+This is one of the most important parts to understand.
+
+`map()` is an operation on `Optional`.
+
+It transforms the value inside an Optional into another value.
+
+Suppose the repository finds this tenant:
+
+``` text
+Tenant
+    id     = 123
+    name   = Elite Park
+    domain = elitepark.com
+```
+
+The lambda:
+
+``` java
+tenant -> new RequestContext(
+        AccessContext.TENANT,
+        tenant.getId()
+)
+```
+
+receives the found tenant and creates a new `RequestContext`.
+
+The result is conceptually:
+
+``` text
+RequestContext
+    accessContext = TENANT
+    tenantId      = 123
+```
+
+If the repository returns an empty Optional, `map()` does not execute
+the lambda. The result remains `Optional.empty()`.
+
+This is useful because you do not need to write an explicit
+`if (tenant != null)` check.
+
+## 14. Complete request examples
+
+### Example A: Platform request
+
+Incoming request:
+
+``` text
+https://woodlandsolutionsbd.com/api/v1/platform/clients
+```
+
+Execution:
+
+1.  `getRequestURI()` returns `/api/v1/platform/clients`.
+2.  `startsWith("/api/v1/platform/")` returns `true`.
+3.  The resolver creates a `RequestContext`.
+4.  It returns `Optional.of(RequestContext(PLATFORM, null))`.
+5.  The tenant repository is never called.
+
+Result:
+
+``` text
+AccessContext: PLATFORM
+Tenant ID:     null
+```
+
+### Example B: Tenant request --- tenant found
+
+Incoming request:
+
+``` text
+https://elitepark.com/api/v1/apartments
+```
+
+Assume the database contains:
+
+``` text
+id:     123
+domain: elitepark.com
+```
+
+Execution:
+
+1.  The URI does not start with `/api/v1/platform/`.
+2.  `getServerName()` returns `elitepark.com`.
+3.  The repository searches for an active, non-deleted tenant with that
+    domain.
+4.  The repository finds Elite Park.
+5.  `map()` creates a tenant `RequestContext`.
+
+Result:
+
+``` text
+AccessContext: TENANT
+Tenant ID:     123
+```
+
+### Example C: Tenant request --- tenant not found
+
+Incoming request:
+
+``` text
+https://unknownbuilding.com/api/v1/apartments
+```
+
+Assume no tenant has that domain.
+
+Execution:
+
+1.  The URI does not match the platform prefix.
+2.  The resolver gets `unknownbuilding.com`.
+3.  The repository searches for a matching tenant.
+4.  No tenant is found.
+5.  The repository returns `Optional.empty()`.
+6.  `map()` does not execute.
+
+Result:
+
+``` java
+Optional.empty()
+```
+
+The code that calls `resolve()` must decide how to handle this missing
+context, such as rejecting the request.
+
+## 15. Visual flow
+
+``` text
+                 Incoming HTTP Request
+                           |
+                           v
+                 Read request URI
+                           |
+                           v
+           Does URI start with /api/v1/platform/?
+                     /             \
+                   YES              NO
+                    |                |
+                    v                v
+             PLATFORM context   Read server name
+             tenant ID = null         |
+                    |                 v
+                    |          Search tenant by domain
+                    |                 |
+                    |           /-----------\
+                    |         Found       Not found
+                    |           |             |
+                    |           v             v
+                    |      TENANT context  Optional.empty()
+                    |      tenant ID = ID
+                    |           |
+                    v           v
+                 Return Optional<RequestContext>
+```
+
+## 16. How this fits into your authentication flow
+
+This class resolves the context of the request. It is not the same as
+identifying the logged-in user.
+
+A simplified conceptual flow could look like this:
+
+``` text
+Incoming HTTP Request
+        |
+        v
+TenantContextResolver
+        |
+        v
+Resolve PLATFORM or TENANT context
+        |
+        v
+Authentication / JWT processing
+        |
+        v
+Validate whether the authenticated user's
+access context is compatible with the request
+        |
+        v
+Continue request processing
+```
+
+The exact order depends on how you register and invoke your resolver in
+your security configuration or filters.
+
+The important distinction:
+
+  -----------------------------------------------------------------------
+  Class                               Responsibility
+  ----------------------------------- -----------------------------------
+  `TenantContextResolver`             Determines which platform or tenant
+                                      context the request belongs to.
+
+  `JwtService`                        Creates and verifies JWTs and
+                                      extracts claims.
+
+  `JwtAuthFilter`                     Processes the access token and
+                                      establishes Spring Security
+                                      authentication.
+
+  `AuthenticationContext`             Provides convenient access to the
+                                      authenticated user.
+
+  `SpringSecurityAuditorAware`        Supplies the current user's ID to
+                                      Spring Data auditing.
+  -----------------------------------------------------------------------
+
+## 17. Important security considerations
+
+The resolver is a context-discovery mechanism, not an authorization
+mechanism.
+
+A few things need to be handled elsewhere in the request flow:
+
+1.  **Do not trust the domain blindly.** If your application is behind
+    Nginx or another reverse proxy, configure trusted forwarded-header
+    handling correctly. Do not allow arbitrary client-supplied forwarded
+    headers to select another tenant.
+2.  **Validate the user's context.** A request resolved as `TENANT`
+    should not automatically be accessible to every authenticated user.
+    Check that the authenticated user's allowed context and tenant match
+    the resolved request context.
+3.  **Handle missing tenants explicitly.** If `resolve()` returns
+    `Optional.empty()`, reject the request rather than silently
+    continuing with an unknown tenant.
+4.  **Check platform access separately.** A request under
+    `/api/v1/platform/` should still require the appropriate
+    platform-level authentication and authorization.
+5.  **Consider domain configuration.** Make sure tenant domains are
+    unique under the intended case-insensitive rules. Also consider
+    whether you support ports, `www` aliases, custom domains, or
+    subdomains.
+
+One particularly important detail: `request.getServerName()` gives you
+the host seen by the servlet request. In a reverse-proxy deployment,
+ensure that this value is derived from trusted proxy configuration
+rather than untrusted client input.
+
+## 18. Quick glossary
+
+  -----------------------------------------------------------------------
+  Term                                Simple meaning
+  ----------------------------------- -----------------------------------
+  `HttpServletRequest`                The incoming HTTP request.
+
+  URI                                 The request path, such as
+                                      `/api/v1/apartments`.
+
+  Server name                         The host/domain, such as
+                                      `elitepark.com`.
+
+  Tenant                              A customer/building using your
+                                      shared application.
+
+  `RequestContext`                    An object describing the resolved
+                                      request context.
+
+  `AccessContext`                     The type of context: `PLATFORM` or
+                                      `TENANT`.
+
+  `Optional`                          A container that may or may not
+                                      contain a value.
+
+  `Optional.of()`                     Wraps an existing, non-null value
+                                      in an Optional.
+
+  `Optional.empty()`                  Represents the absence of a value.
+
+  `map()`                             Transforms a value inside an
+                                      Optional.
+
+  Soft delete                         Marking a record as deleted without
+                                      physically removing it.
+  -----------------------------------------------------------------------
+
+## 19. Practice questions
+
+Try answering these before checking the answers.
+
+**Q1. What is the main responsibility of `TenantContextResolver`?**
+
+**Q2. What does `request.getRequestURI()` return?**
+
+**Q3. What does `request.getServerName()` return?**
+
+**Q4. Why does the platform context have a null tenant ID?**
+
+**Q5. What does `findByDomainIgnoreCaseAndDeletedAtIsNull()` search
+for?**
+
+**Q6. What happens if the repository cannot find a tenant?**
+
+**Q7. Does this class verify whether the logged-in user is allowed to
+access the resolved tenant?**
+
+### Answers
+
+1.  It identifies whether a request belongs to the platform or to a
+    tenant, and returns the corresponding request context.
+2.  The request path, such as `/api/v1/platform/clients`.
+3.  The host name, such as `elitepark.com`.
+4.  Because a platform-level request does not belong to one specific
+    tenant.
+5.  A tenant with a matching domain, ignoring case, whose `deletedAt` is
+    null.
+6.  The method returns `Optional.empty()`.
+7.  No. It resolves the request context. Authorization and tenant-access
+    validation must be handled separately.
+
+## 20. The one thing to remember
+
+Think of `TenantContextResolver` as the receptionist of your
+multi-tenant application.
+
+When a request arrives, it asks:
+
+-   Is this request for the platform?
+-   If not, which tenant's domain is being used?
+-   Can I find that tenant?
+
+It then returns the answer as a `RequestContext`.
+
+**It identifies the request's context; it does not authenticate the user
+or grant permission to access that context.**
