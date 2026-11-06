@@ -429,9 +429,7 @@ So it returns that object.
 
 <br>
 
-# Part 4 --- The shortcut methods
-
-## 15. Why do these methods exist?
+## 12. Why do these methods exist?
 
 Your class contains:
 
@@ -525,11 +523,9 @@ instead of receiving it as a parameter from the frontend.
 
 This is useful for audit fields such as `createdBy` and `updatedBy`.
 
-------------------------------------------------------------------------
+<br>
 
-# Part 5 --- Understanding `getCurrentUserOptional()`
-
-## 16. The complete method
+## 13. The complete method
 
 ``` java
 public Optional<AuthenticatedUser> getCurrentUserOptional() {
@@ -560,7 +556,9 @@ The biggest difference is what happens when no valid user is available:
 -   `getCurrentUser()` throws an exception.
 -   `getCurrentUserOptional()` returns an empty `Optional`.
 
-## 17. What is `Optional`?
+<br>
+
+## 14. What is `Optional`?
 
 `Optional` is a Java type that represents a value that may or may not
 exist.
@@ -596,7 +594,9 @@ Means:
 
 > There is no value.
 
-## 18. How does this method work?
+<br>
+
+## 15. How does this method work?
 
 First, it retrieves the current authentication, just like
 `getCurrentUser()`.
@@ -627,7 +627,9 @@ return Optional.of(authenticatedUser);
 
 It returns the user wrapped inside an Optional.
 
-## 19. How can you use it?
+<br>
+
+## 16. How can you use it?
 
 ``` java
 Optional<AuthenticatedUser> optionalUser =
@@ -679,11 +681,9 @@ user, so `getCurrentUser()` makes sense.
 A feature that can work for both logged-in and anonymous visitors may
 use `getCurrentUserOptional()`.
 
-------------------------------------------------------------------------
+<br>
 
-# Part 6 --- How these classes work with JWT authentication
-
-## 20. The complete relationship
+## 17. The complete relationship
 
 You have learned that `JwtService` creates and verifies JWTs, and
 `JwtAuthFilter` processes incoming requests.
