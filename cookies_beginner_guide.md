@@ -52,6 +52,7 @@ cookies automatically.
 
 There are two headers to remember.
 
+```
   -----------------------------------------------------------------------
   Header                  Direction               Purpose
   ----------------------- ----------------------- -----------------------
@@ -63,6 +64,8 @@ There are two headers to remember.
                                                   cookie name/value pairs
                                                   to the server
   -----------------------------------------------------------------------
+
+```
 
 ### `Set-Cookie`
 
@@ -90,7 +93,7 @@ Notice that the request's `Cookie` header contains cookie name/value
 pairs. It does not send the attributes such as `HttpOnly`, `Secure`, or
 `SameSite` back to the server.
 
-------------------------------------------------------------------------
+<br>
 
 ## 3. Where are cookies stored?
 
@@ -121,9 +124,9 @@ You may see columns such as:
 Browser developer tools differ slightly, but the basic information is
 similar.
 
-------------------------------------------------------------------------
+<br>
 
-# 4. Cookie attributes
+## 4. Cookie attributes
 
 A cookie consists of a name and value, and can have attributes that
 control its lifetime, scope, and handling.
@@ -136,7 +139,7 @@ Set-Cookie: refresh_token=some-random-value; Path=/api/auth/refresh; Max-Age=604
 
 Let's understand the important attributes one by one.
 
-## 4.1 Expires
+### 4.1 Expires
 
 `Expires` gives the cookie an absolute expiration date and time.
 
@@ -149,7 +152,7 @@ After the expiration time, the browser should no longer send the cookie.
 The date must use the HTTP cookie date format (usually expressed in
 GMT/UTC).
 
-## 4.2 Max-Age
+### 4.2 Max-Age
 
 `Max-Age` gives the cookie a lifetime in seconds.
 
@@ -163,14 +166,14 @@ hour---from when it is set.
 If both `Max-Age` and `Expires` are present, `Max-Age` takes precedence
 in modern browsers.
 
-### What if neither is specified?
+#### What if neither is specified?
 
 The cookie is generally a **session cookie**. It is intended to last for
 the browser session, but browser session restoration may preserve
 session cookies after a restart. Do not treat session-cookie lifetime as
 a security guarantee.
 
-## 4.3 Domain
+### 4.3 Domain
 
 `Domain` controls which hosts can receive a cookie.
 
@@ -201,7 +204,7 @@ that set it.
 For example, a host-only cookie set by `api.example.com` is not sent to
 `admin.example.com`.
 
-### Security advice
+#### Security advice
 
 Prefer omitting `Domain` unless sharing a cookie across subdomains is
 genuinely necessary. A broader domain scope makes the cookie available
@@ -210,7 +213,7 @@ to more hosts.
 A cookie cannot normally set a `Domain` that is an unrelated domain or a
 public suffix such as `com`.
 
-## 4.4 Path
+### 4.4 Path
 
 `Path` limits the URL paths for which the browser sends a cookie.
 
@@ -224,13 +227,13 @@ not to unrelated paths such as `/api/users`.
 If `Path` is omitted, the browser derives a default path from the URL
 that set the cookie.
 
-### Important limitation
+#### Important limitation
 
 `Path` is a sending-scope rule, not a strong security boundary. It
 should not be relied on to protect a cookie from other applications or
 scripts on the same host.
 
-## 4.5 Secure
+### 4.5 Secure
 
 ``` http
 Set-Cookie: session_id=abc123; Secure
@@ -245,7 +248,7 @@ HTTP connection.
 For production authentication cookies, use `Secure`. Local development
 over plain HTTP may need a separate development configuration.
 
-## 4.6 HttpOnly
+### 4.6 HttpOnly
 
 ``` http
 Set-Cookie: refresh_token=abc123; HttpOnly
@@ -266,12 +269,12 @@ list.
 The browser can still attach the cookie to eligible HTTP requests. The
 server can still receive it.
 
-### What HttpOnly protects against
+#### What HttpOnly protects against
 
 It helps prevent an attacker who can run JavaScript in the page from
 directly reading and exfiltrating that cookie.
 
-### What HttpOnly does not protect against
+#### What HttpOnly does not protect against
 
 -   It does not stop CSRF.
 -   It does not stop malicious JavaScript from making requests as the
@@ -281,14 +284,14 @@ directly reading and exfiltrating that cookie.
 
 HttpOnly is valuable, but it is only one layer of defense.
 
-## 4.7 SameSite
+### 4.7 SameSite
 
 `SameSite` controls whether a cookie is sent with requests in cross-site
 contexts. It is an important defense against many CSRF attacks.
 
 There are three commonly used values.
 
-### `SameSite=Strict`
+#### `SameSite=Strict`
 
 ``` http
 Set-Cookie: session_id=abc123; SameSite=Strict
@@ -300,7 +303,7 @@ including many navigations initiated from another site.
 This is restrictive and can affect user experience when someone follows
 a link to your site from elsewhere.
 
-### `SameSite=Lax`
+#### `SameSite=Lax`
 
 ``` http
 Set-Cookie: session_id=abc123; SameSite=Lax
@@ -313,7 +316,7 @@ cross-site subresource requests.
 
 This is a common practical default.
 
-### `SameSite=None`
+#### `SameSite=None`
 
 ``` http
 Set-Cookie: session_id=abc123; SameSite=None; Secure
@@ -324,7 +327,7 @@ browser privacy settings and other restrictions.
 
 Modern browsers require `Secure` when `SameSite=None` is used.
 
-### Quick comparison
+#### Quick comparison
 
   Attribute   General behavior
   ----------- -------------------------------------------------
@@ -335,7 +338,7 @@ Modern browsers require `Secure` when `SameSite=None` is used.
 The exact behavior is governed by browser cookie rules. Do not assume
 every browser or privacy configuration behaves identically.
 
-## 4.8 Priority
+### 4.8 Priority
 
 Some browsers support a `Priority` cookie attribute, such as `Low`,
 `Medium`, or `High`, to indicate which cookies are more important when
@@ -348,7 +351,7 @@ Set-Cookie: preference=dark; Priority=High
 This is not as widely central to application design as `Secure`,
 `HttpOnly`, or `SameSite`, and support can vary.
 
-## 4.9 Partitioned
+### 4.9 Partitioned
 
 The `Partitioned` attribute is used with partitioned cookies, associated
 with the CHIPS (Cookies Having Independent Partitioned State) mechanism.
@@ -365,13 +368,13 @@ site.
 Browser support and detailed behavior can vary. Use it only when your
 application has a real need for partitioned third-party state.
 
-------------------------------------------------------------------------
+<br>
 
-# 5. Cookie scope: origin, site, domain, and path
+## 5. Cookie scope: origin, site, domain, and path
 
 These concepts are easy to mix up.
 
-## 5.1 What is an origin?
+### 5.1 What is an origin?
 
 An origin is the combination of:
 
@@ -406,7 +409,7 @@ https://example.com:8443
 
 The ports differ.
 
-## 5.2 What is a site?
+### 5.2 What is a site?
 
 For modern cookie SameSite behavior, a site is broadly based on the
 scheme and registrable domain (the domain boundary determined using the
@@ -433,8 +436,9 @@ These are different sites.
 Scheme matters too: `http://example.com` and `https://example.com` are
 considered different sites for schemeful SameSite behavior.
 
-## 5.3 Origin versus site
+### 5.3 Origin versus site
 
+```
   -------------------------------------------------------------------------------
   URLs                                     Same origin?                Same site?
   --------------------------- ------------------------- -------------------------
@@ -453,6 +457,8 @@ considered different sites for schemeful SameSite behavior.
   `https://example.com`                                 
   -------------------------------------------------------------------------------
 
+```
+
 Remember:
 
 -   **Same-Origin Policy (SOP)** is a browser security policy primarily
@@ -463,9 +469,9 @@ Remember:
 
 They are related, but they are not interchangeable.
 
-------------------------------------------------------------------------
+<br>
 
-# 6. How does the browser decide whether to send a cookie?
+## 6. How does the browser decide whether to send a cookie?
 
 The browser evaluates the cookie's rules against the request.
 
@@ -516,12 +522,14 @@ http://api.example.com/api/auth/refresh
 does not meet the Secure requirement, so the cookie is not sent over
 that insecure connection.
 
-------------------------------------------------------------------------
+<br>
 
-# 7. Cookies versus LocalStorage versus SessionStorage
+## 7. Cookies versus LocalStorage versus SessionStorage
 
 These are different browser storage mechanisms.
 
+
+```
   -----------------------------------------------------------------------
   Feature           Cookies           LocalStorage      SessionStorage
   ----------------- ----------------- ----------------- -----------------
@@ -544,6 +552,8 @@ These are different browser storage mechanisms.
                     cookie (browser   MB                MB
                     limits vary)                        
   -----------------------------------------------------------------------
+
+```
 
 ### Cookies
 
@@ -588,9 +598,9 @@ Common patterns include:
 The correct design depends on the application's architecture and threat
 model.
 
-------------------------------------------------------------------------
+<br>
 
-# 8. Cookies and authentication
+## 8. Cookies and authentication
 
 Cookies are often used to maintain a login session.
 
@@ -607,7 +617,7 @@ Imagine a user logs in.
 A cookie does not itself prove that a user is legitimate. The server
 must validate the session identifier or token it receives.
 
-## 8.1 Session cookie versus persistent cookie
+### 8.1 Session cookie versus persistent cookie
 
 A session cookie generally has no explicit `Expires` or `Max-Age`.
 
@@ -623,7 +633,7 @@ The cookie's lifetime and the server-side session/token lifetime should
 be designed together. A cookie that remains in the browser does not mean
 the server must continue accepting its value.
 
-## 8.2 Refresh token in an HttpOnly cookie
+### 8.2 Refresh token in an HttpOnly cookie
 
 A common architecture is to store a refresh token in an HttpOnly cookie.
 
@@ -657,7 +667,7 @@ The browser attaches the cookie if the request matches its cookie rules.
 The backend then validates the refresh token and, if valid, issues a new
 access token.
 
-### What does `credentials: "include"` do?
+#### What does `credentials: "include"` do?
 
 For Fetch requests, `credentials: "include"` tells the browser to
 include credentials such as cookies on cross-origin requests where
@@ -670,9 +680,9 @@ For same-origin Fetch requests, the default credentials mode is
 It does not override `SameSite`, `Secure`, domain, path, or browser
 privacy restrictions.
 
-------------------------------------------------------------------------
+<br>
 
-# 9. Cookies and CORS
+## 9. Cookies and CORS
 
 Suppose your frontend is:
 
@@ -722,9 +732,9 @@ rules also matter. A cross-site cookie generally requires
 `SameSite=None; Secure`, and browser third-party-cookie policies may
 still restrict it.
 
-------------------------------------------------------------------------
+<br>
 
-# 10. Cookies and CSRF
+## 10. Cookies and CSRF
 
 CSRF stands for **Cross-Site Request Forgery**.
 
@@ -750,7 +760,7 @@ Imagine:
 The malicious website does not necessarily need to read or steal the
 cookie. It may only need to make the browser send it.
 
-## 10.1 CSRF tokens
+### 10.1 CSRF tokens
 
 A CSRF token is an unpredictable value that the server validates on
 requests that need CSRF protection.
@@ -774,7 +784,7 @@ normally include the correct token in a forged request.
 CSRF tokens, SameSite cookies, and Origin/Referer validation can be used
 as complementary defenses.
 
-## 10.2 Which requests need protection?
+### 10.2 Which requests need protection?
 
 Protect operations that change server-side state, such as:
 
@@ -788,9 +798,9 @@ Protect operations that change server-side state, such as:
 Use GET for safe retrieval operations. Do not design GET endpoints that
 change important server state.
 
-------------------------------------------------------------------------
+<br>
 
-# 11. Cookies and XSS
+## 11. Cookies and XSS
 
 XSS means **Cross-Site Scripting**. It happens when an attacker can
 cause malicious JavaScript to execute in a trusted website's context.
@@ -820,9 +830,9 @@ But remember:
 
 Different defenses address different threats.
 
-------------------------------------------------------------------------
+<br>
 
-# 12. Deleting a cookie
+## 12. Deleting a cookie
 
 A server can ask the browser to delete a cookie by setting it with an
 expiration in the past or a zero/negative `Max-Age`.
@@ -848,9 +858,9 @@ For secure logout:
 If the server does not invalidate the token, a copied token might remain
 usable until it expires or is otherwise rejected.
 
-------------------------------------------------------------------------
+<br>
 
-# 13. Cookie security best practices
+## 13. Cookie security best practices
 
 For authentication cookies, a sensible starting point is:
 
@@ -868,7 +878,7 @@ For authentication cookies, a sensible starting point is:
 -   Avoid putting passwords or unnecessary personal data in cookies.
 -   Do not assume cookie values are encrypted or trustworthy.
 
-## 13.1 The `__Host-` cookie prefix
+### 13.1 The `__Host-` cookie prefix
 
 Browsers support special cookie name prefixes that impose additional
 restrictions.
@@ -892,9 +902,9 @@ cookie with the same prefixed name.
 It is a useful option for security-sensitive cookies when its
 requirements fit the application.
 
-------------------------------------------------------------------------
+<br>
 
-# 14. Common misconceptions
+## 14. Common misconceptions
 
 ### Misconception 1: Cookies are encrypted.
 
@@ -933,9 +943,9 @@ JavaScript. It is not a complete CSRF defense.
 No. `app.example.com` and `api.example.com` are different origins but
 generally the same site.
 
-------------------------------------------------------------------------
+<br>
 
-# 15. A complete example: refresh-token cookie
+## 15. A complete example: refresh-token cookie
 
 Suppose your application has:
 
@@ -983,7 +993,7 @@ This is an illustrative design, not a universal configuration. The
 correct SameSite policy and CSRF defenses depend on the deployment
 architecture.
 
-------------------------------------------------------------------------
+<br>
 
 # 16. Quick reference
 
