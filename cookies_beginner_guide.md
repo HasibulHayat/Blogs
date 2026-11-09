@@ -1,10 +1,9 @@
-# Web Cookies: A Beginner-Friendly Guide
+<br>
 
-A practical guide to understanding browser cookies, their attributes,
-how browsers send them, and how cookies relate to authentication and
-security.
+# Web Cookies
 
-------------------------------------------------------------------------
+<br>
+<br>
 
 ## 1. What is a cookie?
 
@@ -47,7 +46,7 @@ Cookie: theme=dark
 The browser, not your frontend JavaScript, normally adds matching
 cookies automatically.
 
-------------------------------------------------------------------------
+<br>
 
 ## 2. The two important HTTP headers
 
