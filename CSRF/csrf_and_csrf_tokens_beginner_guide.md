@@ -1,0 +1,1001 @@
+# CSRF and CSRF Tokens: A Beginner-Friendly Guide
+
+A practical guide to understanding Cross-Site Request Forgery, why it
+happens, how browsers and cookies are involved, and how to protect web
+applications.
+
+This guide starts from zero. You do not need prior security knowledge.
+
+------------------------------------------------------------------------
+
+## 1. What is CSRF?
+
+CSRF stands for **Cross-Site Request Forgery**.
+
+Let's break down the name:
+
+-   **Cross-Site:** A different website is involved.
+-   **Request:** A request is sent to another website.
+-   **Forgery:** The request is made to look like something the
+    legitimate user intended.
+
+In simple words:
+
+> CSRF is an attack in which a malicious website tricks a user's browser
+> into sending an unwanted request to another website where the user is
+> already authenticated.
+
+The attacker may not need to know the user's password or steal their
+cookie. The attack can work because the browser automatically attaches
+authentication cookies to eligible requests.
+
+------------------------------------------------------------------------
+
+## 2. Start with a story: the bank example
+
+Imagine you use a bank called `superbank.example`.
+
+1.  You visit the bank's website.
+2.  You enter your username and password.
+3.  The bank verifies your credentials.
+4.  The bank gives your browser a session cookie.
+5.  Your browser stores that cookie.
+
+The cookie might look like this:
+
+``` http
+Set-Cookie: session_id=ABC123XYZ; HttpOnly; Secure; SameSite=Lax
+```
+
+Later, when you visit the bank again, your browser can automatically
+send the cookie with matching requests.
+
+The bank receives:
+
+``` http
+GET /account HTTP/1.1
+Host: superbank.example
+Cookie: session_id=ABC123XYZ
+```
+
+The bank recognizes the session and knows which user is making the
+request.
+
+This is convenient: you do not have to enter your password on every
+page.
+
+But there is a potential problem.
+
+------------------------------------------------------------------------
+
+## 3. How a CSRF attack happens
+
+Imagine you are logged into `superbank.example`.
+
+While you are still logged in, you visit a malicious website called
+`evil.example`.
+
+The malicious website contains a hidden form:
+
+``` html
+<form action="https://superbank.example/transfer"
+      method="POST">
+
+    <input type="hidden"
+           name="recipient"
+           value="attacker">
+
+    <input type="hidden"
+           name="amount"
+           value="10000">
+
+</form>
+
+<script>
+    document.forms[0].submit();
+</script>
+```
+
+Let's understand what happens:
+
+-   The form targets the bank's transfer endpoint.
+-   It supplies the recipient and amount.
+-   JavaScript submits the form automatically.
+-   Your browser sends the request to the bank.
+-   If the bank's cookie rules permit it, the browser attaches your
+    bank's session cookie.
+
+The request could look like:
+
+``` http
+POST /transfer HTTP/1.1
+Host: superbank.example
+Cookie: session_id=ABC123XYZ
+Content-Type: application/x-www-form-urlencoded
+
+recipient=attacker&amount=10000
+```
+
+The malicious website did not necessarily read your session cookie. The
+browser attached it.
+
+If the bank only checks whether the session is valid and does not
+adequately verify that the action was intentionally initiated through
+its legitimate application, the transfer might happen.
+
+That is CSRF.
+
+### The attack in six steps
+
+1.  You log into a legitimate website.
+2.  The website stores an authentication cookie in your browser.
+3.  You visit a malicious website in the same browser.
+4.  The malicious website causes your browser to send a request to the
+    legitimate website.
+5.  The browser may attach the legitimate website's cookie.
+6.  If the server accepts the forged request, an unwanted action
+    happens.
+
+**Important:** A CSRF attack does not always succeed. Cookie attributes,
+browser privacy protections, request types, application design, and
+server-side defenses all affect whether the attack works.
+
+------------------------------------------------------------------------
+
+## 4. Why does the browser send the cookie?
+
+This is the most important part of CSRF.
+
+Cookies are designed to be sent automatically.
+
+Suppose your browser has a cookie for:
+
+``` text
+https://superbank.example
+```
+
+A request is made to a matching URL. The browser checks the cookie's
+rules and decides whether to attach it.
+
+The browser does not automatically know whether the user intended the
+action.
+
+It knows that the request matches the cookie's rules.
+
+That is the key distinction:
+
+-   The cookie can prove that a request carries a valid session.
+-   The cookie alone does not prove that the user intended to perform
+    the action.
+
+Think of it like an identity card. A valid identity card identifies you,
+but it does not prove that you personally approved every action someone
+attempts in your name.
+
+------------------------------------------------------------------------
+
+## 5. Can the malicious website steal or read the cookie?
+
+Usually, a malicious website cannot directly read another website's
+private cookie.
+
+For example, JavaScript running on `evil.example` cannot normally read
+cookies belonging to `superbank.example`.
+
+This is related to the browser's **Same-Origin Policy (SOP)**.
+
+The Same-Origin Policy restricts how documents and scripts from one
+origin can access resources belonging to another origin.
+
+For example:
+
+``` javascript
+// Running on evil.example
+console.log(document.cookie);
+```
+
+This does not normally reveal cookies belonging to `superbank.example`.
+
+However:
+
+> Being unable to read another site's private data does not mean a
+> website is unable to cause a request to that site.
+
+A malicious page may still cause the browser to submit a form or make
+certain requests to another website.
+
+This is why CSRF is possible even though browsers have the Same-Origin
+Policy.
+
+### Reading versus sending
+
+  -----------------------------------------------------------------------
+  Action                              Can a malicious site do it?
+  ----------------------------------- -----------------------------------
+  Read another origin's private       Generally no
+  cookies                             
+
+  Read another origin's private page  Generally no
+  content                             
+
+  Cause certain requests to another   Often yes
+  origin                              
+
+  Make the browser attach matching    Depends on cookie and browser rules
+  cookies                             
+  -----------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+# 6. What is a CSRF token?
+
+A **CSRF token** is an unpredictable value that a server uses to help
+verify that a state-changing request was initiated through a legitimate
+application flow.
+
+Think of it as an additional security pass.
+
+The session cookie identifies your authenticated session.
+
+The CSRF token helps the server verify that the request contains a value
+that a malicious external website should not be able to obtain.
+
+For example, the server might generate a token:
+
+``` text
+CSRF_TOKEN = 8f72a9b1c4d6e7f8
+```
+
+The legitimate website receives the token and includes it in a protected
+request.
+
+The server validates it before processing the request.
+
+### A normal request with a CSRF token
+
+``` http
+POST /transfer HTTP/1.1
+Host: superbank.example
+Cookie: session_id=ABC123XYZ
+X-CSRF-TOKEN: 8f72a9b1c4d6e7f8
+Content-Type: application/json
+
+{
+  "recipient": "friend",
+  "amount": 100
+}
+```
+
+The server checks:
+
+1.  Is the session valid?
+2.  Is the CSRF token valid for this session or request?
+3.  Are the user and account authorized to perform the transfer?
+4.  Does the request satisfy the business rules?
+
+If all required checks pass, the transfer can proceed.
+
+### A forged request without the token
+
+A malicious website might be able to send:
+
+``` http
+POST /transfer HTTP/1.1
+Host: superbank.example
+Cookie: session_id=ABC123XYZ
+Content-Type: application/x-www-form-urlencoded
+
+recipient=attacker&amount=10000
+```
+
+But it does not know the valid CSRF token.
+
+The server rejects the request.
+
+The token is not a replacement for authentication or authorization. It
+is an additional CSRF defense.
+
+------------------------------------------------------------------------
+
+# 7. How does the legitimate website get the CSRF token?
+
+There are several common patterns.
+
+## 7.1 Synchronizer token pattern
+
+This is a classic approach.
+
+1.  The user visits the website.
+2.  The server creates or retrieves a CSRF token associated with the
+    user's session.
+3.  The server includes the token in the HTML page or returns it through
+    a trusted endpoint.
+4.  The frontend includes the token in a state-changing request.
+5.  The server compares the submitted token with the expected token.
+
+Example HTML:
+
+``` html
+<form action="/transfer" method="POST">
+
+    <input type="hidden"
+           name="_csrf"
+           value="UNPREDICTABLE_TOKEN">
+
+    <input type="number"
+           name="amount"
+           value="100">
+
+    <button type="submit">Transfer</button>
+
+</form>
+```
+
+The token is hidden from the normal visual page, but it is present in
+the HTML.
+
+The browser submits it along with the form.
+
+For a JavaScript request, the frontend may send it in a custom header:
+
+``` javascript
+fetch("/api/transfer", {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": csrfToken
+    },
+    body: JSON.stringify({
+        amount: 100
+    })
+});
+```
+
+The server validates the token.
+
+## 7.2 Cookie-to-header pattern
+
+Another common approach is the cookie-to-header pattern.
+
+The server sends a CSRF token in a cookie that JavaScript is allowed to
+read:
+
+``` http
+Set-Cookie: XSRF-TOKEN=UNPREDICTABLE_TOKEN; Secure; SameSite=Lax; Path=/
+```
+
+Notice that this cookie does not have `HttpOnly`.
+
+Why?
+
+Because the frontend JavaScript needs to read the token.
+
+It then copies the token into a custom HTTP header:
+
+``` javascript
+const token = readCookie("XSRF-TOKEN");
+
+fetch("/api/transfer", {
+    method: "POST",
+    headers: {
+        "X-XSRF-TOKEN": token
+    },
+    credentials: "include",
+    body: JSON.stringify({
+        amount: 100
+    })
+});
+```
+
+The browser automatically sends the cookie, while the frontend
+deliberately adds the token to the header.
+
+The backend validates the token according to the framework's CSRF
+mechanism.
+
+### Why can this work?
+
+A malicious website generally cannot read the CSRF cookie belonging to
+another origin because of the Same-Origin Policy.
+
+It also cannot normally read the token and copy it into the required
+custom header.
+
+**Important:** The cookie-to-header pattern is different from simply
+checking that a cookie exists. The server must validate the submitted
+token correctly. A naive design in which an attacker can choose or
+inject both values is not safe.
+
+------------------------------------------------------------------------
+
+# 8. What is the difference between a session cookie and a CSRF token?
+
+They have different jobs.
+
+  -----------------------------------------------------------------------
+  Session cookie                      CSRF token
+  ----------------------------------- -----------------------------------
+  Identifies an authenticated session Helps verify request legitimacy
+
+  Used for authentication             Used for CSRF protection
+
+  Often sent automatically by the     Deliberately included in a
+  browser                             protected request
+
+  Must be validated by the server     Must be validated by the server
+  -----------------------------------------------------------------------
+
+Think of this analogy:
+
+-   Session cookie = Your identity card.
+-   CSRF token = An additional security pass.
+
+Having an identity card does not mean you authorized every transaction
+someone attempts in your name.
+
+A CSRF token does not replace the session cookie. The two mechanisms
+work together.
+
+------------------------------------------------------------------------
+
+# 9. What is SameSite, and how does it help?
+
+Cookies have an attribute called `SameSite`.
+
+It tells the browser when a cookie can be sent in cross-site contexts.
+
+There are three commonly used values.
+
+## 9.1 SameSite=Strict
+
+``` http
+Set-Cookie: session_id=ABC123; SameSite=Strict
+```
+
+The browser generally withholds this cookie from cross-site requests,
+including many navigations initiated from another site.
+
+This provides strong restrictions but can affect user experience.
+
+## 9.2 SameSite=Lax
+
+``` http
+Set-Cookie: session_id=ABC123; SameSite=Lax
+```
+
+The browser generally allows the cookie in certain cross-site top-level
+navigations using safe methods, typically GET.
+
+It generally withholds the cookie from cross-site POST form submissions
+and cross-site subresource requests.
+
+This is a common practical default.
+
+## 9.3 SameSite=None
+
+``` http
+Set-Cookie: session_id=ABC123; SameSite=None; Secure
+```
+
+This permits the cookie in cross-site contexts, subject to browser
+privacy settings and other restrictions.
+
+Modern browsers require `Secure` when `SameSite=None` is used.
+
+### Quick comparison
+
+  Setting   General cross-site behavior
+  --------- -----------------------------------------------------
+  Strict    Most restrictive
+  Lax       Allows certain top-level navigations
+  None      Allows cross-site contexts, subject to restrictions
+
+### Is SameSite enough to stop CSRF?
+
+It can prevent many CSRF attacks, but it should not automatically be
+treated as a complete defense.
+
+Reasons include:
+
+-   Some applications genuinely require cross-site cookies.
+-   Browser behavior and privacy policies vary.
+-   Same-site subdomains can have different security properties.
+-   Applications can accidentally perform state changes through GET
+    requests.
+-   Some CSRF scenarios involve compromised or untrusted sibling
+    subdomains.
+
+SameSite is an important layer of defense. A CSRF token and Origin
+validation may also be appropriate depending on the architecture.
+
+------------------------------------------------------------------------
+
+# 10. What is Origin validation?
+
+Browsers often send an `Origin` header with requests that include an
+origin context.
+
+For example:
+
+``` http
+POST /api/transfer HTTP/1.1
+Host: superbank.example
+Origin: https://superbank.example
+Cookie: session_id=ABC123
+```
+
+The server can check whether the request's origin matches an allowed
+frontend origin.
+
+If the request instead contains:
+
+``` http
+Origin: https://evil.example
+```
+
+the server can reject it.
+
+This is called **Origin validation**.
+
+The `Referer` header can also provide information about the page that
+initiated a request, although it may be absent or reduced by browser
+policies.
+
+### Is Origin validation enough?
+
+It is a useful defense, but applications should implement it carefully:
+
+-   Use an explicit allowlist of trusted origins.
+-   Compare parsed origins, not arbitrary string fragments.
+-   Reject unexpected origins on protected state-changing requests.
+-   Decide how to handle requests where the Origin header is absent.
+-   Do not trust an origin value supplied by an untrusted client outside
+    the browser threat model.
+
+Origin validation can complement CSRF tokens and SameSite cookies.
+
+------------------------------------------------------------------------
+
+# 11. Which HTTP requests need CSRF protection?
+
+CSRF protection is primarily needed for requests that change server-side
+state when authentication relies on automatically attached credentials.
+
+Examples:
+
+  Request                     Changes server state? CSRF concern
+  ------------------------- ----------------------- --------------
+  View profile                                   No Usually not
+  View account balance                           No Usually not
+  Transfer money                                Yes Yes
+  Change password                               Yes Yes
+  Update profile                                Yes Yes
+  Delete account                                Yes Yes
+  Create an apartment                           Yes Yes
+  Delete a payment record                       Yes Yes
+
+Common state-changing HTTP methods include:
+
+-   POST
+-   PUT
+-   PATCH
+-   DELETE
+
+But do not rely only on the HTTP method.
+
+A GET request should be safe and should not perform state-changing
+operations.
+
+For example, this is bad design:
+
+``` http
+GET /delete-account
+```
+
+GET requests may be triggered by links, crawlers, previews, browser
+prefetching, and other mechanisms.
+
+Use a state-changing method and apply the appropriate security checks.
+
+------------------------------------------------------------------------
+
+# 12. Does every application need CSRF protection?
+
+No. It depends on how authentication credentials are sent.
+
+## Scenario A: Cookie-based authentication
+
+Imagine the browser stores:
+
+``` http
+Set-Cookie: session_id=ABC123; HttpOnly; Secure; SameSite=Lax
+```
+
+The browser automatically sends the cookie with matching requests.
+
+A malicious website may be able to trigger a request that includes the
+cookie.
+
+CSRF protection is important.
+
+## Scenario B: Bearer-token authentication
+
+Imagine your frontend stores an access token in memory and manually
+attaches it:
+
+``` http
+Authorization: Bearer eyJhbGciOi...
+```
+
+A malicious website generally cannot force the browser to attach that
+Authorization header containing your application's token.
+
+This makes traditional CSRF attacks much harder.
+
+However, there are qualifications:
+
+-   If the access token is stored in a cookie, CSRF becomes relevant
+    again.
+-   If the application automatically attaches credentials through
+    another mechanism, consider that mechanism.
+-   XSS can allow malicious JavaScript to perform actions from within
+    the legitimate application.
+-   A bearer token exposed to an attacker can be used directly until it
+    expires or is revoked.
+
+The important question is not simply whether your application uses JWTs.
+It is **how the browser sends the authentication credential**.
+
+A JWT stored in a cookie is still subject to cookie-based CSRF concerns.
+
+------------------------------------------------------------------------
+
+# 13. HttpOnly does not prevent CSRF
+
+This is a very common misunderstanding.
+
+Consider:
+
+``` http
+Set-Cookie: refresh_token=SECRET123; HttpOnly; Secure; SameSite=None
+```
+
+HttpOnly means JavaScript cannot read the cookie.
+
+But the browser can still attach it to an eligible cross-site request
+because SameSite=None permits cross-site sending.
+
+So:
+
+-   HttpOnly helps prevent direct cookie reading by JavaScript.
+-   Secure requires HTTPS.
+-   SameSite controls cross-site cookie sending.
+-   CSRF tokens help validate the legitimacy of state-changing requests.
+
+Each attribute or mechanism solves a different problem.
+
+Do not treat HttpOnly as a CSRF defense.
+
+------------------------------------------------------------------------
+
+# 14. CSRF and refresh-token endpoints
+
+Consider an application with:
+
+-   An access token held in frontend memory.
+-   A refresh token stored in an HttpOnly cookie.
+-   A refresh endpoint at `/api/v1/auth/refresh`.
+
+The frontend requests a new access token:
+
+``` javascript
+fetch("/api/v1/auth/refresh", {
+    method: "POST",
+    credentials: "include"
+});
+```
+
+The browser attaches the refresh cookie if its rules permit.
+
+A malicious site might attempt to trigger a request to this endpoint
+too.
+
+The consequences depend on the backend's behavior.
+
+For example, a forged refresh request might:
+
+-   Cause the server to rotate a refresh token.
+-   Cause the browser to receive a new refresh cookie.
+-   Cause unexpected session changes.
+-   Interact badly with token rotation or session management.
+
+Whether an attacker can use the response or cause a more serious impact
+depends on browser restrictions, cookie settings, CORS, and the
+application's implementation.
+
+A malicious website generally cannot read the cross-origin response just
+because it can trigger a request. But preventing response reading is not
+the same as preventing the request itself.
+
+Therefore, refresh endpoints using cookie authentication deserve careful
+CSRF analysis.
+
+Possible defenses include:
+
+-   A suitable SameSite cookie policy.
+-   CSRF token validation.
+-   Strict Origin validation.
+-   Correct CORS configuration.
+-   Refresh-token rotation and server-side revocation.
+
+------------------------------------------------------------------------
+
+# 15. Spring Security and CSRF
+
+Spring Security includes built-in CSRF protection.
+
+When enabled, it uses a `CsrfTokenRepository` to manage CSRF tokens and
+checks protected requests for a valid token.
+
+A common configuration uses:
+
+``` java
+http
+    .csrf(csrf -> csrf
+        .csrfTokenRepository(
+            CookieCsrfTokenRepository.withHttpOnlyFalse()
+        )
+    );
+```
+
+Let's understand the important part:
+
+``` java
+CookieCsrfTokenRepository.withHttpOnlyFalse()
+```
+
+This tells Spring Security to store the CSRF token in a cookie that
+frontend JavaScript can read.
+
+Why is HttpOnly false?
+
+Because this configuration is commonly used with the cookie-to-header
+pattern: JavaScript reads the CSRF cookie and copies the token into a
+request header.
+
+**Important:** The CSRF cookie is not your authentication cookie.
+
+For example, you might have two separate cookies:
+
+``` text
+refresh_token
+    HttpOnly = true
+    Contains the refresh credential
+
+XSRF-TOKEN
+    HttpOnly = false
+    Contains the CSRF token
+```
+
+The frontend must not treat the CSRF cookie as an authentication
+credential.
+
+### A simplified request flow
+
+1.  The frontend makes an initial request to the backend.
+2.  Spring Security makes a CSRF token available according to the
+    configured repository and token-handling behavior.
+3.  The browser receives the CSRF cookie.
+4.  JavaScript reads the CSRF cookie.
+5.  JavaScript copies the value into the expected request header.
+6.  The browser also attaches the authentication cookie if its rules
+    permit.
+7.  Spring Security validates the CSRF token.
+8.  The request proceeds only if the security checks pass.
+
+### Important Spring Security detail
+
+Modern Spring Security versions use deferred CSRF token loading and may
+use XOR-based token handling to protect against BREACH-style attacks.
+
+The exact behavior depends on the Spring Security version and
+configuration.
+
+Also, configuring a CSRF repository alone does not mean your frontend
+automatically sends the required header. The frontend and backend must
+agree on the token delivery and header conventions.
+
+Do not disable CSRF protection simply because your application uses
+JWTs. First determine whether authentication credentials are
+automatically attached by the browser.
+
+------------------------------------------------------------------------
+
+# 16. CSRF versus XSS versus CORS
+
+These concepts are related but solve different problems.
+
+  -----------------------------------------------------------------------
+  Concept                 What it means           Main concern
+  ----------------------- ----------------------- -----------------------
+  CSRF                    Forging an              Did the
+                          authenticated request   user/application
+                                                  legitimately initiate
+                                                  this action?
+
+  XSS                     Injecting malicious     Can attacker-controlled
+                          JavaScript into a       code execute in the
+                          trusted site            site's context?
+
+  CORS                    Browser policy for      Can JavaScript from
+                          cross-origin response   this origin read that
+                          access                  response?
+
+  SOP                     Browser isolation       Can one origin access
+                          policy                  another origin's
+                                                  protected resources?
+
+  SameSite                Cookie cross-site       Should this cookie
+                          sending policy          accompany this
+                                                  cross-site request?
+  -----------------------------------------------------------------------
+
+### A simple way to remember
+
+-   CSRF: Someone tricks your browser into doing something.
+-   XSS: Someone gets malicious JavaScript to run in your website.
+-   CORS: The browser controls whether JavaScript can read a
+    cross-origin response.
+-   SOP: Websites are isolated from one another by default.
+-   SameSite: The browser controls when cookies travel across sites.
+
+CORS is not a replacement for CSRF protection.
+
+------------------------------------------------------------------------
+
+# 17. Common misconceptions
+
+### Misconception 1: The hacker must steal the cookie.
+
+No. A CSRF attack can work without the attacker ever reading the cookie.
+
+### Misconception 2: HttpOnly prevents CSRF.
+
+No. HttpOnly prevents JavaScript from reading the cookie. The browser
+can still send it.
+
+### Misconception 3: Using JWT automatically prevents CSRF.
+
+No. A JWT stored in an automatically attached cookie can still be
+vulnerable to CSRF.
+
+### Misconception 4: CORS prevents every cross-origin request.
+
+No. Browsers can send certain cross-origin requests even when JavaScript
+cannot read the response.
+
+### Misconception 5: A CSRF token authenticates the user.
+
+No. Authentication identifies the user. A CSRF token helps verify the
+request's legitimacy.
+
+### Misconception 6: SameSite=None is always wrong.
+
+No. Some architectures need cross-site cookies. They must be configured
+with appropriate protections.
+
+### Misconception 7: Every endpoint needs a CSRF token.
+
+No. CSRF protection is primarily relevant to state-changing operations
+that rely on automatically attached credentials. Safe retrieval
+endpoints generally do not need it.
+
+### Misconception 8: CSRF tokens prevent XSS.
+
+No. Malicious JavaScript executing inside your legitimate site may be
+able to access the CSRF token and perform actions as the user.
+
+------------------------------------------------------------------------
+
+# 18. CSRF protection checklist
+
+For a cookie-authenticated web application, consider the following:
+
+-   [ ] Use HTTPS in production.
+-   [ ] Set authentication cookies as `Secure`.
+-   [ ] Set sensitive authentication cookies as `HttpOnly`.
+-   [ ] Choose an appropriate `SameSite` policy.
+-   [ ] Use CSRF tokens for protected state-changing requests when
+    appropriate.
+-   [ ] Validate Origin headers against an explicit allowlist.
+-   [ ] Use CORS with explicit trusted origins when credentials are
+    involved.
+-   [ ] Never use GET endpoints to perform state-changing actions.
+-   [ ] Validate authentication and authorization independently of CSRF.
+-   [ ] Keep refresh-token rotation and revocation secure.
+-   [ ] Test the behavior in real browsers, not only with Postman.
+
+------------------------------------------------------------------------
+
+# 19. Practice questions
+
+Try answering these without looking back.
+
+1.  What does CSRF stand for?
+2.  Why can a malicious website sometimes trigger an authenticated
+    request without knowing the user's password?
+3.  Does a malicious website need to read the user's cookie to perform a
+    CSRF attack?
+4.  What is the difference between authentication and CSRF protection?
+5.  What is a CSRF token?
+6.  Why can a malicious website generally not read a CSRF token from
+    another origin?
+7.  What is the difference between `SameSite=Lax` and `SameSite=None`?
+8.  Why does HttpOnly not prevent CSRF?
+9.  Why does CORS not replace CSRF protection?
+10. Why can a JWT stored in an HttpOnly cookie still be involved in a
+    CSRF vulnerability?
+11. Why should GET requests not change server-side state?
+12. Why might a refresh-token endpoint need CSRF protection?
+
+## A small scenario exercise
+
+Imagine this setup:
+
+``` text
+Frontend: https://app.example.com
+Backend:  https://api.example.com
+
+Authentication:
+- Access token: held in JavaScript memory
+- Refresh token: HttpOnly cookie
+- Refresh endpoint: POST /api/v1/auth/refresh
+```
+
+Think about these questions:
+
+1.  Are the frontend and backend the same origin?
+2.  Are they generally the same site?
+3.  Can JavaScript read the refresh token?
+4.  Can the browser automatically attach the refresh cookie?
+5.  Does the fact that the refresh token is HttpOnly eliminate CSRF
+    risk?
+6.  What additional defenses might you consider?
+
+There is no need to rush. Try explaining each answer in your own words.
+
+------------------------------------------------------------------------
+
+# 20. Suggested learning path
+
+After understanding CSRF, continue in this order:
+
+1.  **HTTP fundamentals** --- requests, responses, headers, methods,
+    status codes.
+2.  **Cookies** --- storage, scope, attributes, and browser behavior.
+3.  **Origins and the Same-Origin Policy** --- how browsers isolate
+    websites.
+4.  **CORS** --- how cross-origin requests and response access work.
+5.  **CSRF** --- how forged requests happen and how tokens help.
+6.  **XSS** --- how malicious JavaScript can compromise a website.
+7.  **Authentication** --- sessions, access tokens, refresh tokens, and
+    rotation.
+8.  **Spring Security** --- implementing these protections in a real
+    backend.
+
+## Final takeaway
+
+Remember these five ideas:
+
+1.  CSRF exploits the browser's automatic sending of authentication
+    credentials, especially cookies.
+2.  The attacker may not need to read or steal the cookie.
+3.  A CSRF token is an additional value that the server validates to
+    help reject forged requests.
+4.  SameSite cookies and Origin validation provide additional defenses.
+5.  CSRF protection, authentication, authorization, CORS, and XSS
+    protection solve different security problems.
+
+The goal is not to memorize a configuration. Understand why the browser
+behaves this way, what the server can verify, and what each defense
+actually protects.
