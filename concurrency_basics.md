@@ -1,0 +1,320 @@
+# Understanding Concurrency --- The Basics
+
+## 1. What is concurrency?
+
+**Concurrency** is the ability of a program to work on more than one
+task during the same period of time.
+
+Imagine you are running a small restaurant.
+
+-   One customer is placing an order.
+-   Another customer is paying.
+-   A third customer is waiting for food.
+
+The restaurant does not need to finish serving the first customer
+completely before it can start helping the second one. Different tasks
+can make progress during overlapping periods.
+
+A computer program can work in a similar way. It can manage several
+tasks so that progress on one task does not always have to stop all the
+others.
+
+In simple words:
+
+> Concurrency means managing multiple tasks that are in progress during
+> the same period.
+
+## 2. Why do we need concurrency?
+
+Without concurrency, a program might handle tasks one at a time.
+
+Imagine a web server receiving requests from three users:
+
+1.  User A asks to see available football turf slots.
+2.  User B asks to view their booking history.
+3.  User C tries to book a slot.
+
+If the server handled every request strictly one after another, User B
+might have to wait for User A's entire request to finish, even if User
+A's request is waiting for a database response.
+
+Concurrency allows the server to make progress on other requests while
+one request is waiting.
+
+This can help a system:
+
+-   Serve many users at the same time.
+-   Use CPU and other resources more effectively.
+-   Stay responsive when some tasks are waiting.
+-   Handle work such as web requests, database operations and background
+    jobs.
+
+Concurrency does **not** automatically make every program faster. It
+helps a program manage overlapping work, but it also introduces
+complexity.
+
+## 3. What is a task?
+
+A **task** is simply a piece of work a program needs to perform.
+
+Examples:
+
+-   Load a user's profile.
+-   Check whether a turf slot is available.
+-   Save a booking to the database.
+-   Send a confirmation email.
+-   Process a payment.
+-   Generate a daily report.
+
+A program can have many tasks to manage. Concurrency is about how those
+tasks make progress in relation to one another.
+
+## 4. What is a thread?
+
+A **thread** is a path of execution inside a running program.
+
+You can think of a thread as a worker carrying out instructions.
+
+For example, imagine a kitchen:
+
+-   The kitchen represents the running application.
+-   The cooks represent threads.
+-   Preparing meals represents tasks.
+
+One cook can work on one task. Multiple cooks can work on different
+tasks.
+
+In a computer program, multiple threads can execute work within the same
+process. They share some resources, such as the program's memory, which
+is useful but can also cause problems.
+
+A thread is not the same thing as a task:
+
+-   **Task:** what needs to be done.
+-   **Thread:** an execution path that can do the work.
+
+A task may wait in a queue until a thread is available to execute it.
+
+## 5. Concurrency vs. parallelism
+
+These two terms are related, but they do not mean exactly the same
+thing.
+
+### Concurrency
+
+Concurrency means multiple tasks can make progress during overlapping
+periods.
+
+A single CPU core can switch between tasks very quickly. For example:
+
+1.  It works on Task A for a short time.
+2.  It pauses Task A.
+3.  It works on Task B.
+4.  It returns to Task A.
+
+Both tasks make progress over the same overall period, even though that
+one core is executing only one instruction stream at a particular
+instant.
+
+### Parallelism
+
+Parallelism means multiple tasks are actually executing at the same
+instant, typically on different CPU cores.
+
+Imagine two cooks preparing two meals at exactly the same time. That is
+a useful mental model for parallelism.
+
+### The difference
+
+  -----------------------------------------------------------------------
+  Concurrency                         Parallelism
+  ----------------------------------- -----------------------------------
+  Multiple tasks are in progress      Multiple tasks execute at the same
+  during overlapping periods.         instant.
+
+  Can happen on one CPU core.         Requires multiple execution
+                                      resources, such as CPU cores.
+
+  Focuses on managing multiple tasks. Focuses on doing work
+                                      simultaneously.
+  -----------------------------------------------------------------------
+
+**Remember:** Concurrency is about dealing with many tasks at once.
+Parallelism is about literally executing multiple tasks at once.
+
+## 6. What is a process?
+
+A **process** is a running instance of a program.
+
+For example, when you start a Java application, the operating system
+runs it as a process.
+
+A process has its own memory space and resources. That process can
+contain one or more threads.
+
+A simple picture:
+
+``` text
+Java Application (Process)
+|
+|-- Thread 1
+|-- Thread 2
+|-- Thread 3
+```
+
+The threads belong to the same process and can share its memory.
+
+## 7. What happens when a thread is waiting?
+
+Not every task spends all its time doing calculations.
+
+A thread might be waiting for:
+
+-   A database query to finish.
+-   A file to be read.
+-   A response from another service.
+-   A network request to complete.
+
+For example, a Turf booking request might need to ask PostgreSQL whether
+a slot is available.
+
+While waiting for the database response, the application may be able to
+use other threads to handle other requests.
+
+This is one reason concurrency is so useful in backend applications.
+
+## 8. A simple Turf example
+
+Imagine three users send requests to your Spring Boot application at
+nearly the same time:
+
+``` text
+User A ----\
+User B -----+----> Spring Boot Application
+User C ----/
+```
+
+The application needs to handle all three requests.
+
+Their tasks might be:
+
+-   User A: view available slots.
+-   User B: view booking history.
+-   User C: reserve a slot.
+
+A concurrent application can manage these requests without requiring one
+user's entire interaction to finish before another user's request
+begins.
+
+But there is an important catch.
+
+What if User A and User C both try to book the same 10:00 AM slot?
+
+Concurrency makes it possible for both requests to be processed at
+nearly the same time. It does **not** guarantee that the booking result
+will be correct.
+
+We need additional techniques to protect shared data and prevent double
+booking.
+
+We will study those techniques later.
+
+## 9. Does concurrency always mean multiple threads?
+
+No.
+
+Threads are a common way to implement concurrency, especially in Java,
+but concurrency is a broader idea.
+
+It can also be implemented using:
+
+-   Asynchronous programming.
+-   Event loops.
+-   Non-blocking input/output (I/O).
+-   Message queues.
+-   Multiple processes or services.
+
+For now, focus on understanding threads. We will explore the other
+approaches when they become relevant.
+
+## 10. Important beginner vocabulary
+
+  -----------------------------------------------------------------------
+  Term                                Easy meaning
+  ----------------------------------- -----------------------------------
+  Concurrency                         Managing multiple tasks that are in
+                                      progress during overlapping
+                                      periods.
+
+  Parallelism                         Executing multiple tasks at exactly
+                                      the same time.
+
+  Process                             A running program.
+
+  Thread                              A path of execution inside a
+                                      process.
+
+  Task                                A piece of work that needs to be
+                                      done.
+
+  CPU                                 The part of the computer that
+                                      executes instructions.
+
+  CPU core                            A processing unit that can execute
+                                      instructions.
+
+  Context switching                   Switching the CPU's execution from
+                                      one task or thread to another.
+
+  Shared memory                       Memory that multiple threads can
+                                      access.
+
+  I/O                                 Input/output operations, such as
+                                      reading files or communicating over
+                                      a network.
+  -----------------------------------------------------------------------
+
+## 11. Check your understanding
+
+Try answering these questions in your own words:
+
+1.  What is concurrency?
+2.  Why do backend applications need concurrency?
+3.  What is the difference between a task and a thread?
+4.  What is the difference between a process and a thread?
+5.  What is the difference between concurrency and parallelism?
+6.  Can concurrency happen on a computer with only one CPU core?
+7.  Why might a thread wait while communicating with a database?
+8.  Why doesn't concurrency alone prevent two users from booking the
+    same turf slot?
+
+Don't worry if you cannot answer everything immediately. The purpose is
+to build understanding, not memorize definitions.
+
+## 12. What should you remember from this lesson?
+
+If you remember only five things, remember these:
+
+1.  A task is a piece of work a program needs to perform.
+2.  A thread is a path of execution that can perform tasks.
+3.  A process is a running instance of a program and can contain
+    multiple threads.
+4.  Concurrency lets multiple tasks make progress during overlapping
+    periods.
+5.  Parallelism means multiple tasks are actually executing at the same
+    instant.
+
+**The big picture:** Modern backend applications need to handle many
+users and many operations. Concurrency helps them manage that work. The
+rest of our learning journey will teach us how to do it safely and
+efficiently.
+
+------------------------------------------------------------------------
+
+## Next lesson
+
+**Race conditions:** What happens when multiple threads access and
+modify the same data at nearly the same time?
+
+We will use a simple Java counter example to understand why concurrency
+can sometimes produce incorrect results.
