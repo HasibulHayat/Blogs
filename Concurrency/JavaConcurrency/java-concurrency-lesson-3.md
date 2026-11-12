@@ -1,0 +1,231 @@
+# Java Concurrency --- Lesson 3: `Thread.sleep()`
+
+## 1. What does `Thread.sleep()` do?
+
+`Thread.sleep()` pauses the **currently executing thread** for
+approximately the specified amount of time.
+
+The time is given in milliseconds:
+
+``` java
+Thread.sleep(3000); // approximately 3 seconds
+```
+
+Useful conversions: - 1,000 milliseconds = 1 second - 2,000 milliseconds
+= 2 seconds - 5,000 milliseconds = 5 seconds
+
+Sleeping does not stop the whole Java application. Other threads can
+continue running.
+
+## 2. A simple example
+
+``` java
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Task started");
+
+        try {
+            Thread.sleep(3000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+
+        System.out.println("Task finished");
+    }
+}
+```
+
+The `main()` method runs on the **main thread**. Because the main thread
+calls `Thread.sleep(3000)`, the main thread pauses for approximately
+three seconds before continuing.
+
+## 3. Why does `sleep()` need try-catch?
+
+`Thread.sleep()` can throw `InterruptedException`. This is a checked
+exception, so Java requires the code to handle it or declare it.
+
+A common way to handle interruption is:
+
+``` java
+try {
+    Thread.sleep(3000);
+} catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+    return;
+}
+```
+
+This restores the thread's interrupted status and exits the task. We
+will study interruption more deeply in a later lesson.
+
+## 4. Which thread actually sleeps?
+
+The location of the `Thread.sleep()` call matters.
+
+### Example A --- Sleep in the main thread
+
+``` java
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Task started");
+
+        try {
+            Thread.sleep(3000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+
+        Thread thread1 = new Thread(() ->
+            System.out.println("Thread 1 started")
+        );
+
+        thread1.start();
+        System.out.println("Task finished");
+    }
+}
+```
+
+The main thread sleeps before it creates and starts `thread1`.
+
+The order is: 1. Main prints `Task started`. 2. Main sleeps for
+approximately three seconds. 3. Main creates and starts `thread1`. 4.
+Main prints `Task finished`. 5. `thread1` prints `Thread 1 started`.
+
+The last two messages may appear in either order because the two threads
+execute independently.
+
+### Example B --- Sleep inside the new thread
+
+``` java
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Task started");
+
+        Thread thread1 = new Thread(() -> {
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+
+            System.out.println("Thread 1 started");
+        });
+
+        thread1.start();
+        System.out.println("Task finished");
+    }
+}
+```
+
+Now `thread1` sleeps, not the main thread.
+
+A likely output is:
+
+``` text
+Task started
+Task finished
+
+(approximately 3 seconds pass)
+
+Thread 1 started
+```
+
+The main thread can continue while `thread1` is sleeping.
+
+## 5. Two threads sleeping independently
+
+We can use `sleep()` inside multiple thread tasks:
+
+``` java
+public class Main {
+    public static void main(String[] args) {
+        Runnable taskA = () -> {
+            for (int i = 1; i <= 5; i++) {
+                System.out.println("Task A: " + i);
+
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        };
+
+        Runnable taskB = () -> {
+            for (int i = 1; i <= 5; i++) {
+                System.out.println("Task B: " + i);
+
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        };
+
+        Thread threadA = new Thread(taskA);
+        Thread threadB = new Thread(taskB);
+
+        threadA.start();
+        threadB.start();
+    }
+}
+```
+
+The output order can vary. Both threads can make progress independently.
+When one thread sleeps, the other thread can continue running.
+
+## 6. Important details to remember
+
+-   `Thread.sleep(milliseconds)` pauses the currently executing thread.
+-   It does not pause every thread in the application.
+-   The main thread can sleep just like any other thread.
+-   If a new thread calls `sleep()`, that new thread sleeps.
+-   Other threads can continue running while one thread sleeps.
+-   `sleep()` can throw `InterruptedException`.
+-   Sleeping for a requested duration is approximate; it does not
+    guarantee the thread will resume at an exact instant.
+-   `sleep()` does **not** release a monitor lock that the thread
+    already holds. We will explore this when learning synchronization.
+
+## 7. Practice
+
+### Exercise 1 --- Simple sleep
+
+Print `Starting...`, sleep for two seconds, then print `Finished!`.
+
+### Exercise 2 --- Multiple threads
+
+Create two threads. Each should print numbers from 1 to 5, sleeping for
+one second between numbers. Observe how their output interleaves.
+
+### Exercise 3 --- Observe which thread sleeps
+
+Create two threads: - Thread A sleeps for five seconds. - Thread B
+prints numbers from 1 to 5 without sleeping.
+
+Start both threads. Observe whether Thread B waits for Thread A to wake
+up.
+
+### Check your understanding
+
+**Question 1:** What does `Thread.sleep(2000)` do?
+
+**Question 2:** If Thread A sleeps for five seconds, can Thread B
+continue working?
+
+**Question 3:** If `main()` calls `Thread.sleep(3000)`, which thread is
+sleeping?
+
+**Question 4:** Does `Thread.sleep()` release a monitor lock held by the
+sleeping thread?
+
+------------------------------------------------------------------------
+
+**Lesson 3 complete.** In Lesson 4, we will learn `join()`, which allows
+one thread to wait for another thread to finish.
