@@ -1,4 +1,9 @@
-# Java Concurrency --- Lesson 2: `run()` and `Runnable`
+<br>
+
+# Java Concurrency - Lesson 2
+
+<br>
+<br>
 
 ## 1. What did we learn in Lesson 1?
 
@@ -8,6 +13,8 @@ create another thread using the `Thread` class and start it by calling
 
 But a thread needs a task to execute. In this lesson, we learn how to
 define that task.
+
+<br>
 
 ## 2. The `run()` method
 
@@ -36,6 +43,8 @@ What happens:
     task.
 3.  `myThread.start()` starts a new thread of execution.
 4.  The new thread executes the overridden `run()` method.
+
+<br>
 
 ## 3. What is `Runnable`?
 
@@ -73,6 +82,8 @@ Here:
 -   `myThread.start()` starts the new thread, which executes the task.
 
 This separates the **task** from the **thread that executes it**.
+
+<br>
 
 ## 4. Using a lambda with `Thread`
 
@@ -138,6 +149,8 @@ myThread.start();
 This passes a `Runnable` implementation to the `Thread` constructor. It
 does not subclass `Thread` or override its method.
 
+<br>
+
 ## 5. `start()` versus `run()`
 
 These calls are different:
@@ -188,6 +201,8 @@ Executing on: Thread-0
 The first call runs on the main thread. The second call starts a new
 thread.
 
+<br>
+
 ## 6. Important ideas to remember
 
 -   `run()` contains the task's instructions.
@@ -200,28 +215,4 @@ thread.
 -   Separating a task (`Runnable`) from its execution (`Thread`) is a
     useful design practice.
 
-## 7. Practice
-
-1.  Create a thread by extending `Thread` and overriding `run()`.
-2.  Create a separate `Runnable` implementation and pass it to a
-    `Thread`.
-3.  Rewrite the `Runnable` example using a lambda.
-4.  Compare `myThread.run()` with `myThread.start()` using
-    `Thread.currentThread().getName()`.
-
-### Check your understanding
-
-**Question 1:** When you write `new Thread(() -> { ... })`, what does
-the lambda represent?
-
-**Question 2:** What is the difference between overriding `Thread.run()`
-and passing a `Runnable` to the `Thread` constructor?
-
-**Question 3:** Why does calling `run()` directly not start a new
-thread?
-
-------------------------------------------------------------------------
-
-**Lesson 2 complete.** In Lesson 3, we will learn how to pause a thread
-using `Thread.sleep()` and observe how multiple threads behave while
-sleeping.
+<br>
