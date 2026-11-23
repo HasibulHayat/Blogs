@@ -1,10 +1,9 @@
+<br>
+
 # Java Concurrency — Phase 2, Lesson 2: Race Conditions
 
-## Introduction
-
-In Phase 2, Lesson 1, we learned about shared data: data that multiple threads can access. This lesson explains what can go wrong when multiple threads access and modify shared data concurrently.
-
-A **race condition** occurs when a program's behavior or result depends on the unpredictable timing or ordering of concurrent operations.
+<br>
+<br>
 
 ## 1. A real-world example: Turf bookings
 
@@ -22,6 +21,8 @@ Two users attempt to book it at nearly the same time.
 4. User B also attempts to book it.
 
 If the application does not coordinate these operations correctly, it may accept two bookings for one slot. This is a simplified race-condition example.
+
+<br>
 
 ## 2. A shared counter example
 
@@ -73,6 +74,8 @@ We expect 2,000 because each thread attempts 1,000 increments. But the result is
 
 A run may still produce 2,000 by chance. A race condition does not have to produce an incorrect result every time.
 
+<br>
+
 ## 3. Why can `count++` lose an update?
 
 This statement looks like one operation:
@@ -89,6 +92,7 @@ Conceptually, it involves multiple steps:
 
 Suppose `count` starts at 10:
 
+```
 | Step | Thread A | Thread B |
 |---:|---|---|
 | 1 | Reads 10 | |
@@ -97,10 +101,13 @@ Suppose `count` starts at 10:
 | 4 | | Calculates 11 |
 | 5 | Writes 11 | |
 | 6 | | Writes 11 |
+```
 
 The final value is 11, although two increments were attempted. One update was overwritten. This is called a **lost update**.
 
 A single line of Java code is not necessarily one indivisible operation.
+
+<br>
 
 ## 4. Thread interleaving
 
@@ -129,6 +136,8 @@ Thread B: Write
 ```
 
 The second order produces the expected result for these two increments. We cannot rely on the scheduler always choosing a favorable order.
+
+<br>
 
 ## 5. Reproducing a race condition
 
@@ -201,9 +210,13 @@ The sleep creates an opportunity for another thread to run after the current thr
 
 The catch block restores the interrupt status and exits the increment operation if the thread is interrupted, rather than silently swallowing the interruption.
 
+<br>
+
 ## 6. Race conditions are not limited to counters
 
 Race conditions can occur whenever concurrent operations depend on shared mutable state.
+
+<br>
 
 ### A. Bank account
 
@@ -221,6 +234,8 @@ Two threads attempt withdrawals at the same time.
 
 Without coordination, the resulting balance or transaction outcome can be incorrect.
 
+<br>
+
 ### B. Inventory or slot availability
 
 Suppose:
@@ -231,9 +246,13 @@ int availableSlots = 5;
 
 Several users try to reserve slots. Without proper concurrency control, the system may accept more reservations than capacity allows.
 
+<br>
+
 ### C. Payment processing
 
 Two requests may attempt to process the same payment. Duplicate charges can involve concurrency, retries, distributed systems, and missing idempotency controls. It is not only a Java-thread problem.
+
+<br>
 
 ## 7. Database check-then-act race
 
@@ -251,6 +270,7 @@ bookingRepository.save(booking);
 
 Two requests may interleave:
 
+```
 | Time | Request A | Request B |
 |---|---|---|
 | 1 | Checks the slot | |
@@ -259,6 +279,7 @@ Two requests may interleave:
 | 4 | | Slot appears available |
 | 5 | Saves booking | |
 | 6 | | Saves booking |
+```
 
 Both requests passed the availability check.
 
@@ -275,10 +296,13 @@ Later, we will study:
 
 A production booking system needs data-integrity protection at the database level as well as appropriate application-level coordination.
 
+<br>
+
 ## 8. How can race conditions be prevented?
 
 We will study these mechanisms in later lessons:
 
+```
 | Technique | What it helps with |
 |---|---|
 | `synchronized` | Coordinates access to critical sections |
@@ -287,8 +311,11 @@ We will study these mechanisms in later lessons:
 | `ReentrantLock` | Provides explicit lock-based coordination |
 | Database constraints | Enforces data integrity in the database |
 | Optimistic/pessimistic locking | Coordinates conflicting database updates |
+```
 
 For now, focus on understanding the problem before memorizing solutions.
+
+<br>
 
 ## 9. Important things to remember
 
@@ -303,33 +330,4 @@ For now, focus on understanding the problem before memorizing solutions.
 9. Database code can also have check-then-act races.
 10. Correct solutions require appropriate synchronization and data-integrity mechanisms.
 
-## 10. Knowledge check
-
-Try answering these questions before checking the answers.
-
-1. What is a race condition?
-2. Why can `count++` lose an update?
-3. What is a lost update?
-4. Does `Thread.sleep()` fix a race condition?
-5. Two booking requests both check that a slot is free before either saves. What kind of issue is this?
-
-### Answers
-
-1. A problem where the timing or ordering of concurrent operations affects the program's result.
-2. Its read, calculation, and write steps can interleave between threads.
-3. One update overwrites another update.
-4. No. Sleep changes timing and may expose a problem, but it does not coordinate access.
-5. A check-then-act race condition.
-
-## Next lesson — Phase 2, Lesson 3: Critical Sections
-
-Next, we will learn how to identify and protect the parts of code that access shared data.
-
-Topics:
-- What is a critical section?
-- Why is mutual exclusion needed?
-- How do we identify critical sections?
-- How does a critical section relate to Java's `synchronized` keyword?
-- How does this apply to simultaneous Turf bookings?
-
-We will understand the concept first, then learn the Java mechanisms that enforce it.
+<br>
