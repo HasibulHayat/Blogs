@@ -1,0 +1,605 @@
+# Phase 3 --- Lesson 2: Synchronized Blocks
+
+## What you will learn
+
+In Lesson 1, you learned that an instance `synchronized` method locks
+the current object (`this`). A **synchronized block** lets you choose
+exactly which object's monitor to acquire.
+
+By the end, you should understand: -
+`synchronized (lockObject) { ... }` - Why a block can be better than
+synchronizing an entire method - Why every code path protecting the same
+state must use the same lock - How synchronized blocks help with
+in-memory Turf examples---and why they do not solve multi-server booking
+correctness
+
+## 1. The basic idea
+
+A monitor lock belongs to an object. This code asks Java to acquire the
+monitor belonging to `lockObject`:
+
+``` java
+synchronized (lockObject) {
+    // Critical section
+}
+```
+
+If another thread already owns that same monitor, this thread waits.
+When the block exits, Java releases the monitor automatically, including
+when an exception exits the block.
+
+The block does not own the lock. The object named in parentheses does.
+
+## 2. First runnable example: a race condition
+
+Create `SynchronizedBlockDemo.java`:
+
+``` java
+public class SynchronizedBlockDemo {
+    static class Counter {
+        private int count = 0;
+
+        public void increment() {
+            count++; // Not protected
+        }
+
+        public int getCount() {
+            return count;
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        Counter counter = new Counter();
+        int threadCount = 5;
+        int incrementsPerThread = 100_000;
+        Thread[] threads = new Thread[threadCount];
+
+        for (int i = 0; i < threadCount; i++) {
+            threads[i] = new Thread(() -> {
+                for (int j = 0; j < incrementsPerThread; j++) {
+                    counter.increment();
+                }
+            });
+            threads[i].start();
+        }
+
+        for (Thread thread : threads) {
+            thread.join();
+        }
+
+        System.out.println("Expected: " + (threadCount * incrementsPerThread));
+        System.out.println("Actual:   " + counter.getCount());
+    }
+}
+```
+
+The expected answer is `500000`, but the actual result may be lower.
+`count++` is a read-modify-write operation: two threads can read the
+same old value and overwrite each other's updates. The bug is
+timing-dependent, so it may not appear on every run.
+
+## 3. Protect the critical section
+
+Replace the `Counter` class with:
+
+``` java
+static class Counter {
+    private int count = 0;
+    private final Object lock = new Object();
+
+    public void increment() {
+        synchronized (lock) {
+            count++;
+        }
+    }
+
+    public int getCount() {
+        synchronized (lock) {
+            return count;
+        }
+    }
+}
+```
+
+Now both methods acquire the same monitor. Only one thread at a time can
+execute either protected section. The read also acquires the monitor, so
+it coordinates with updates and sees the properly published value after
+acquiring the lock.
+
+The final count should be `500000`.
+
+### Why must it be the same lock?
+
+This is incorrect:
+
+``` java
+public void increment() {
+    synchronized (new Object()) {
+        count++;
+    }
+}
+
+public int getCount() {
+    synchronized (new Object()) {
+        return count;
+    }
+}
+```
+
+Each call creates a different object. The threads are acquiring
+different monitors, so they are not coordinating.
+
+**Rule:** all code paths that need to coordinate access to the same
+shared state must acquire the same lock.
+
+## 4. Why use a synchronized block instead of a synchronized method?
+
+An instance synchronized method locks `this` for the entire method:
+
+``` java
+public synchronized void createBooking() {
+    validateUser();
+    calculatePrice();
+    updateInMemoryState();
+    sendEmail();
+}
+```
+
+The monitor remains held during validation, calculation, state update,
+and email sending. If only the in-memory update needs protection, the
+lock can be held for less time:
+
+``` java
+public void createBooking() {
+    validateUser();
+    calculatePrice();
+
+    synchronized (bookingLock) {
+        updateInMemoryState();
+    }
+
+    sendEmail();
+}
+```
+
+A shorter critical section can reduce unnecessary waiting. But do not
+move part of a logical check-and-update operation outside the lock.
+Protect the complete operation that must be indivisible.
+
+## 5. Which object should you lock?
+
+### Option A: `this`
+
+``` java
+class Inventory {
+    private int quantity = 10;
+
+    public void decrease() {
+        synchronized (this) {
+            quantity--;
+        }
+    }
+}
+```
+
+This acquires the same monitor as an instance synchronized method on
+that object:
+
+``` java
+public synchronized void decrease() {
+    quantity--;
+}
+```
+
+The downside is that other code with access to the instance can also
+synchronize on it, potentially creating unexpected contention.
+
+### Option B: a private lock object
+
+``` java
+class Inventory {
+    private int quantity = 10;
+    private final Object inventoryLock = new Object();
+
+    public void decrease() {
+        synchronized (inventoryLock) {
+            quantity--;
+        }
+    }
+}
+```
+
+A `private final Object` is often a good choice: the lock is stable, and
+unrelated code cannot directly acquire it.
+
+### Avoid unstable or globally shared lock choices
+
+Avoid `synchronized ("inventory")`: string literals can be shared
+through the string pool, allowing unrelated code to acquire the same
+monitor.
+
+Avoid locking on a value that can be replaced:
+
+``` java
+private Integer lock = 1; // Bad choice
+```
+
+If the reference changes, different threads may lock different objects.
+Prefer:
+
+``` java
+private final Object lock = new Object();
+```
+
+## 6. Two blocks using the same lock
+
+``` java
+class Wallet {
+    private int balance = 1000;
+    private final Object lock = new Object();
+
+    public void addMoney(int amount) {
+        synchronized (lock) {
+            balance += amount;
+        }
+    }
+
+    public void spendMoney(int amount) {
+        synchronized (lock) {
+            if (balance >= amount) {
+                balance -= amount;
+            }
+        }
+    }
+}
+```
+
+Both blocks use the same monitor. If Thread A is inside `addMoney`,
+Thread B cannot enter the block in `spendMoney` until A releases the
+lock. Method names do not matter; the monitor identity matters.
+
+If the methods used separate locks, both blocks could execute at the
+same time and fail to coordinate access to `balance`.
+
+## 7. Turf example: reserve an in-memory slot
+
+Suppose one Java process holds an in-memory representation of a slot:
+
+``` java
+public class TurfSlot {
+    private boolean booked = false;
+    private final Object bookingLock = new Object();
+
+    public boolean book() {
+        synchronized (bookingLock) {
+            if (booked) {
+                return false;
+            }
+
+            booked = true;
+            return true;
+        }
+    }
+
+    public boolean isBooked() {
+        synchronized (bookingLock) {
+            return booked;
+        }
+    }
+}
+```
+
+The availability check and state change are both inside the critical
+section. If the check were outside, two threads could both see
+`booked == false` and both proceed.
+
+Try this complete test:
+
+``` java
+public class TurfSlotDemo {
+    static class Slot {
+        private boolean booked = false;
+        private final Object bookingLock = new Object();
+
+        public boolean book() {
+            synchronized (bookingLock) {
+                if (booked) {
+                    return false;
+                }
+                booked = true;
+                return true;
+            }
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        Slot slot = new Slot();
+
+        Runnable request = () -> {
+            boolean success = slot.book();
+            System.out.println(
+                Thread.currentThread().getName() + ": " + success
+            );
+        };
+
+        Thread a = new Thread(request, "Customer-A");
+        Thread b = new Thread(request, "Customer-B");
+
+        a.start();
+        b.start();
+        a.join();
+        b.join();
+    }
+}
+```
+
+Exactly one thread should print `true`; the other should print `false`.
+
+## 8. Why this is not enough for the real Turf backend
+
+Imagine the Spring Boot application runs on three servers:
+
+``` text
+                 Customers
+                     |
+               Load Balancer
+                /    |    \\
+               /     |     \\
+          Server 1 Server 2 Server 3
+            JVM 1    JVM 2    JVM 3
+```
+
+Each server is a separate Java process with its own memory.
+
+-   Customer A reaches Server 1 and acquires the lock object inside JVM
+    1.
+-   Customer B reaches Server 2 and acquires a different lock object
+    inside JVM 2.
+-   Those locks do not know about each other.
+
+Both servers might independently believe the slot is available. A
+`synchronized` block coordinates threads sharing one monitor inside one
+JVM; it does not create a shared lock across servers or processes.
+
+### What should the real Turf backend use?
+
+The database must participate in booking correctness. A typical design
+direction is:
+
+1.  Store bookings in a relational database.
+2.  Add a database constraint that prevents duplicate or overlapping
+    reservations according to your slot model and database.
+3.  Perform the booking decision and write inside a transaction.
+4.  Use database row locking or optimistic concurrency where
+    appropriate.
+5.  Treat a constraint violation or concurrency conflict as "slot no
+    longer available."
+6.  Make booking/payment operations idempotent so retries do not create
+    duplicate effects.
+
+If the system creates one row per discrete turf/time slot, a unique
+constraint on the slot identity can prevent two successful inserts for
+the same slot. If bookings can have arbitrary start/end times, overlap
+prevention needs a more careful database-specific design.
+
+**Do not assume that adding `synchronized` to a Spring service method
+solves double booking in a multi-instance deployment.** It may
+coordinate threads in one instance, but the database must enforce
+cross-instance correctness.
+
+## 9. Synchronized method vs synchronized block
+
+  Feature                    Synchronized method      Synchronized block
+  -------------------------- ------------------------ --------------------
+  Protected region           Entire method            Only the block
+  Instance method lock       `this`                   Chosen object
+  Dedicated private lock     Not directly             Yes
+  Limit lock duration        Requires restructuring   Natural
+  Protect a few statements   Not directly             Yes
+
+Use a synchronized method when the whole method is one short operation
+guarded by the instance monitor. Use a block when only part of the
+method needs protection or you want a dedicated lock. Multiple locks can
+reduce contention for independent state, but they also introduce
+lock-ordering complexity.
+
+## 10. Common mistakes
+
+**Mistake 1: Creating a new lock each time**
+
+``` java
+synchronized (new Object()) {
+    // Does not coordinate with other calls
+}
+```
+
+**Mistake 2: Different locks for the same shared state**
+
+If `addMoney()` and `spendMoney()` protect the same balance but use
+different monitors, they do not coordinate.
+
+**Mistake 3: Protecting only the write, not the check**
+
+Unsafe:
+
+``` java
+if (!booked) {
+    synchronized (lock) {
+        booked = true;
+    }
+}
+```
+
+Safe:
+
+``` java
+synchronized (lock) {
+    if (!booked) {
+        booked = true;
+    }
+}
+```
+
+**Mistake 4: Holding a lock during slow external work**
+
+Avoid holding an in-memory monitor while making network calls, sending
+email, or waiting for a payment provider. But do not move
+correctness-critical state changes outside the protected operation
+without designing a safe alternative.
+
+**Mistake 5: Assuming all access is protected**
+
+A synchronized block only coordinates code that acquires the same
+monitor. Unsynchronized code can still access the same field without
+acquiring that monitor.
+
+**Mistake 6: Assuming it works across servers**
+
+A Java monitor is local to one JVM. Multi-instance correctness requires
+shared coordination, commonly database constraints and transactions.
+
+## 11. Interview questions
+
+Try to answer before reading each answer.
+
+**Q1. What is a synchronized block?**
+
+A block that acquires the monitor of a specified object before executing
+and releases it when the block exits.
+
+**Q2. What does this lock?**
+
+``` java
+synchronized (lock) {
+    update();
+}
+```
+
+The monitor belonging to the object referenced by `lock`.
+
+**Q3. Can two synchronized blocks execute simultaneously?**
+
+Yes, if they use different lock objects. If they use the same monitor,
+only one thread at a time can own it.
+
+**Q4. Can a block use a private lock instead of `this`?**
+
+Yes. A private final lock object is often useful because unrelated code
+cannot directly synchronize on it.
+
+**Q5. Is this safe?**
+
+``` java
+if (!booked) {
+    synchronized (lock) {
+        booked = true;
+    }
+}
+```
+
+No. The check is outside the lock. Put the check and update inside the
+same critical section.
+
+**Q6. Does synchronized protect a field from every thread in the
+application?**
+
+No. It coordinates threads that acquire the same monitor. Unsynchronized
+code can still access the field without that coordination.
+
+**Q7. Will a synchronized block prevent double booking across three
+servers?**
+
+No. Each JVM has its own lock object. Use database-level constraints and
+transaction/concurrency controls for cross-instance correctness.
+
+**Q8. Why might a block be preferable to a synchronized method?**
+
+It can protect only the critical section and can use a dedicated lock
+object, reducing unnecessary lock contention.
+
+## 12. Practice questions
+
+### Practice 1 --- Predict
+
+``` java
+class Example {
+    private final Object lock = new Object();
+
+    public void methodA() {
+        synchronized (lock) {
+            System.out.println("A");
+        }
+    }
+
+    public void methodB() {
+        synchronized (lock) {
+            System.out.println("B");
+        }
+    }
+}
+```
+
+If two threads call these methods on the same `Example` object, can both
+synchronized sections execute at the same time? Explain.
+
+### Practice 2 --- Find the bug
+
+``` java
+class TicketCounter {
+    private int tickets = 1;
+    private final Object lock = new Object();
+
+    public boolean buyTicket() {
+        if (tickets > 0) {
+            synchronized (lock) {
+                tickets--;
+                return true;
+            }
+        }
+        return false;
+    }
+}
+```
+
+What is wrong? Rewrite it safely.
+
+### Practice 3 --- Choose a lock
+
+A `Turf` object has two fields: `maintenanceStatus` and
+`currentOccupancy`.
+
+Would you use one lock or two? Explain the trade-off. Think about
+whether operations must update both fields together.
+
+### Practice 4 --- System design
+
+Your application runs on four Spring Boot instances. Two customers try
+to book the same turf and time.
+
+1.  Why can each instance's synchronized block succeed independently?
+2.  What should the database guarantee?
+3.  What should the losing request receive?
+4.  Why should retrying not accidentally create a second booking?
+
+### Practice 5 --- Build it
+
+Create `SeatInventory` with: - a private integer `availableSeats`; - a
+private final lock object; - `reserve(int quantity)`; -
+`getAvailableSeats()`.
+
+Use synchronized blocks so concurrent reservations cannot make the count
+negative. Test with at least 10 threads.
+
+## 13. Lesson recap
+
+1.  A synchronized block uses `synchronized (someObject)`.
+2.  The lock belongs to `someObject`.
+3.  Threads coordinate only when they acquire the same monitor.
+4.  Put the complete shared-state operation---such as check and
+    update---inside the critical section.
+5.  Java synchronized blocks are JVM-local, not a distributed locking
+    solution.
+
+**Next lesson: Object Monitors and Intrinsic Locks** --- we will look
+more deeply at monitor ownership and how Java's intrinsic locking model
+fits together.
