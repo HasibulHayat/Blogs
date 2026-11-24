@@ -1,0 +1,189 @@
+Java Concurrency — Final Roadmap
+Recommended learning path
+ 65 lessons · 7 phases
+Phase 1 — Thread fundamentals
+Your existing phase is good. Keep it.
+#	Topic	Status
+1	Introduction to Threads	Done
+2	Runnable and run() vs start()	Done
+3	Thread.sleep()	Done
+4	Thread.join()	Done
+5	Thread Lifecycle and States	Done
+6	Thread.currentThread()	Done
+7	Thread Names and IDs	Done
+8	Thread Priorities	Done
+9	Thread.yield()	Done
+10	Thread.interrupt()	Done
+11	Daemon Threads	Done
+12	Uncaught Exception Handling	Done
+13	ThreadGroup	Next
+
+Phase 2 — Core concurrency concepts
+Extremely important
+Understand the problems before learning their solutions.
+#	Topic
+14	Shared Data and Shared Mutable State
+15	Race Conditions
+16	Critical Sections
+17	Atomicity
+18	Thread Safety
+19	Data Visibility
+20	Java Memory Model (JMM)
+21	Happens-Before Relationship
+22	Instruction Reordering
+23	Immutability and Thread Safety
+24	Safe Publication
+
+Phase 3 — Synchronization
+Learn how Java prevents multiple threads from corrupting shared data.
+#	Topic
+25	synchronized Methods
+26	synchronized Blocks
+27	Object Monitors and Intrinsic Locks
+28	Static Synchronization
+29	volatile Keyword
+30	wait()
+31	notify() and notifyAll()
+32	Deadlocks
+33	Starvation and Livelock
+
+Important practical exercises:
+- Build a thread-safe counter.
+- Build a shared bank account.
+- Reproduce a race condition and fix it.
+- Create a deadlock intentionally and resolve it.
+Phase 4 — Modern Java concurrency utilities
+Very important for interviews and projects
+This is where you start writing more realistic concurrent applications.
+#	Topic
+34	Executor Framework
+35	ExecutorService
+36	Thread Pools
+37	Callable and Future
+38	Future.get(), Cancellation and Timeouts
+39	CompletableFuture
+40	Atomic Variables and CAS
+41	ReentrantLock
+42	ReadWriteLock
+43	Concurrent Collections
+44	ConcurrentHashMap
+45	ScheduledExecutorService
+
+Note: ConcurrentHashMap is separated from concurrent collections because it deserves its own practical and theoretical understanding.
+Phase 5 — Advanced concurrency utilities
+These concepts help you coordinate multiple threads and understand more complex applications.
+#	Topic
+46	CountDownLatch
+47	CyclicBarrier
+48	Semaphore
+49	BlockingQueue
+50	Producer-Consumer Pattern
+51	ForkJoinPool
+52	Work Stealing
+53	Virtual Threads
+54	ThreadLocal and Context Propagation
+55	Structured Concurrency
+
+For structured concurrency, understand the concepts and Java-version-specific API status. Don't assume every API is available in every Java release.
+Phase 6 — Real-world concurrency and backend engineering
+Preparation for Turf
+This phase connects Java concurrency with Spring Boot and databases.
+#	Topic
+56	CPU-bound vs I/O-bound Tasks
+57	Thread Pool Sizing and Resource Management
+58	Thread Pool Exhaustion
+59	Database Transactions and Transaction Boundaries
+60	Transaction Isolation Levels
+61	Optimistic vs Pessimistic Locking
+62	Database Deadlocks and Lock Contention
+63	Idempotency and Duplicate Requests
+64	Retry, Timeout and Cancellation Strategies
+65	Distributed Locks and Distributed Race Conditions
+
+You don't need to master distributed systems before starting Turf. These topics can be revisited when the architecture actually requires them.
+
+7. Practical projects
+Don't wait until Lesson 65 to start building things.
+
+Build these progressively as you learn.
+
+
+
+
+
+
+
+
+
+
+Project 1 — Thread-safe Banking System
+
+After Phase 3.
+- Multiple concurrent deposits and withdrawals.
+- Prevent race conditions.
+- Ensure balance consistency.
+Tests: synchronization, atomicity, visibility
+
+
+
+
+
+
+
+
+
+
+
+
+
+Project 2 — Multithreaded Task Processing System
+
+After Phase 4–5.
+- Submit multiple jobs.
+- Execute using thread pools.
+- Handle failures and timeouts.
+- Coordinate workers.
+Tests: ExecutorService, Future, BlockingQueue, Semaphore
+
+
+
+
+
+
+
+
+
+
+
+
+
+Project 3 — Concurrent API Aggregator
+
+After Phase 4.
+- Call multiple APIs concurrently.
+- Combine responses.
+- Handle timeouts and failures.
+- Implement cancellation.
+Tests: CompletableFuture, thread pools, timeouts
+
+
+
+
+
+
+
+
+
+
+
+
+
+Project 4 — Concurrent Turf Booking Engine
+
+After Phase 6.
+- Multiple customers booking the same slot.
+- Prevent double booking.
+- Handle simultaneous payment requests.
+- Handle duplicate requests.
+- Use proper database transactions and locking.
+Tests: Spring Boot, PostgreSQL, transactions, locking, idempotency
