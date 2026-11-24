@@ -1,22 +1,9 @@
-# Java Concurrency --- Phase 3: Synchronization
+<br>
 
-# Lesson 1: `synchronized` Methods
+# Java Concurrency - Phase 3: Synchronization
 
-## What you will learn
-
-By the end of this lesson, you should understand:
-
-1.  Why multiple threads sometimes need to take turns.
-2.  What `synchronized` means in Java.
-3.  How a synchronized method uses an object's lock.
-4.  What happens when two threads call the same synchronized method.
-5.  The difference between synchronized instance methods and static
-    methods.
-6.  How to run small programs and observe the behavior yourself.
-7.  Why Java synchronization alone is not enough to protect Turf
-    bookings across multiple application instances.
-
-------------------------------------------------------------------------
+<br>
+<br>
 
 ## 1. First, understand the problem
 
@@ -36,8 +23,11 @@ enough money is available.
 
 This is a concurrency problem.
 
+<br>
+
 ### What can happen without protection?
 
+```
 Suppose the balance is 1,000.
 
   Step   Thread A                Thread B
@@ -48,6 +38,7 @@ Suppose the balance is 1,000.
   4                              Checks: 1,000 \>= 500
   5      Writes balance: 300     
   6                              Writes balance: 500
+```
 
 Both withdrawals may report success, even though only one should have
 been allowed.
@@ -58,7 +49,7 @@ how the threads' operations interleave.
 The important problem is that the check and the update belong together.
 We do not want another thread interfering in the middle.
 
-------------------------------------------------------------------------
+<br>
 
 ## 2. What is `synchronized`?
 
@@ -80,6 +71,8 @@ Think of a room with one key:
 This is called **mutual exclusion**: only one thread at a time can hold
 that lock.
 
+<br>
+
 ### Important detail
 
 The lock belongs to an object, not to the method itself.
@@ -87,7 +80,7 @@ The lock belongs to an object, not to the method itself.
 For an ordinary instance synchronized method, Java uses the current
 object (`this`) as the lock.
 
-------------------------------------------------------------------------
+<br>
 
 ## 3. Your first runnable example
 
@@ -131,15 +124,7 @@ public class SynchronizedExample {
 }
 ```
 
-### Run it
-
-If you have the JDK installed, open a terminal in the folder containing
-the file and run:
-
-``` bash
-javac SynchronizedExample.java
-java SynchronizedExample
-```
+<br>
 
 ### Expected output
 
@@ -154,6 +139,8 @@ You should get `200000` because:
 -   Both threads share the same `Counter` object.
 -   The synchronized method allows only one thread at a time to execute
     `increment()` on that object.
+
+<br>
 
 ### Try changing one thing
 
@@ -189,7 +176,7 @@ with those steps.
 
 Put `synchronized` back before continuing.
 
-------------------------------------------------------------------------
+<br>
 
 ## 4. How does a synchronized instance method work?
 
