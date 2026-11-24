@@ -209,6 +209,8 @@ For an instance synchronized method:
 The lock is automatically released when the method exits, including when
 it exits because an exception is thrown.
 
+<br>
+
 ### One object means one shared lock
 
 Consider:
@@ -240,7 +242,7 @@ This is a very important point:
 > Synchronization works between threads that use the same lock. It does
 > not automatically lock every instance of a class.
 
-------------------------------------------------------------------------
+<br>
 
 ## 5. Experiment: two objects, two locks
 
@@ -281,6 +283,8 @@ public class DifferentObjectsExample {
 }
 ```
 
+<br>
+
 ### What should you observe?
 
 Both threads can enter their methods without waiting for the other,
@@ -297,6 +301,8 @@ Thread 2 finished
 
 The order can vary. The important observation is that both can be inside
 their methods during overlapping periods.
+
+<br>
 
 ### Now change the experiment
 
@@ -323,7 +329,7 @@ enter it. You should see the messages grouped by thread, with roughly
 two seconds between the first thread entering and finishing, and the
 second thread entering and finishing.
 
-------------------------------------------------------------------------
+<br>
 
 ## 6. What if a synchronized method calls another synchronized method?
 
