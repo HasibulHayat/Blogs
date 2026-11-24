@@ -1,0 +1,690 @@
+# Phase 3 --- Lesson 3: Object Monitors and Intrinsic Locks
+
+## What you will learn
+
+Lesson 1 taught you that an instance `synchronized` method locks `this`.
+Lesson 2 taught you to choose a lock object with `synchronized (lock)`.
+Now we will understand what Java is locking.
+
+By the end, you should be able to: - Explain objects, monitors, and
+intrinsic locks. - Understand monitor ownership and release. - Compare
+instance locks with class-level locks. - Explain reentrant locking. -
+Understand why `sleep()` does not release a monitor. - Connect monitor
+behavior to real Turf booking architecture.
+
+## 1. An object and its monitor
+
+Consider:
+
+``` java
+Object lock = new Object();
+```
+
+This creates a normal Java object. Java associates an intrinsic monitor
+with each object, and that object can be used as a lock.
+
+``` java
+synchronized (lock) {
+    // critical section
+}
+```
+
+A useful mental model is a room with one key: - The room represents the
+protected critical section. - The key represents ownership of the
+object's monitor. - A thread must acquire the key before entering. -
+Only one thread can own that monitor at a time. - The thread releases it
+when it exits the synchronized region.
+
+The terms are related: - **Object:** the Java object you created. -
+**Monitor:** the synchronization mechanism associated with that
+object. - **Intrinsic lock:** Java's built-in monitor-based locking
+mechanism used by `synchronized`.
+
+Developers often say "object lock" or "monitor lock" when discussing
+this mechanism.
+
+## 2. What does monitor ownership mean?
+
+``` java
+class Printer {
+    public void print() {
+        synchronized (this) {
+            System.out.println("Printing...");
+        }
+    }
+}
+```
+
+Suppose two threads call `print()` on the same `Printer` object:
+
+``` java
+Printer printer = new Printer();
+
+Thread a = new Thread(printer::print);
+Thread b = new Thread(printer::print);
+
+a.start();
+b.start();
+```
+
+Possible execution:
+
+1.  Thread A reaches `synchronized (this)`.
+2.  A acquires this Printer object's monitor.
+3.  Thread B reaches the same block.
+4.  B cannot acquire the monitor because A owns it, so B waits.
+5.  A exits the block and releases the monitor.
+6.  B can now acquire it and print.
+
+The key detail is **same object**. If the threads call the method on
+different Printer objects, they use different monitors and do not block
+each other just because the method is the same.
+
+## 3. Runnable experiment: same object vs different objects
+
+Create `MonitorExperiment.java`:
+
+``` java
+public class MonitorExperiment {
+
+    static class Printer {
+        private final String name;
+
+        Printer(String name) {
+            this.name = name;
+        }
+
+        public void print() {
+            synchronized (this) {
+                System.out.println(
+                    Thread.currentThread().getName()
+                    + " entered " + name
+                );
+
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+
+                System.out.println(
+                    Thread.currentThread().getName()
+                    + " leaving " + name
+                );
+            }
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        Printer sharedPrinter = new Printer("SharedPrinter");
+
+        Thread a = new Thread(sharedPrinter::print, "Thread-A");
+        Thread b = new Thread(sharedPrinter::print, "Thread-B");
+
+        a.start();
+        b.start();
+        a.join();
+        b.join();
+    }
+}
+```
+
+### Experiment A: same object
+
+Both threads use `sharedPrinter`. One enters first; the other waits.
+Either thread may win first---the order is not guaranteed.
+
+### Experiment B: different objects
+
+Replace `main()` with:
+
+``` java
+public static void main(String[] args) throws InterruptedException {
+    Printer printerA = new Printer("Printer-A");
+    Printer printerB = new Printer("Printer-B");
+
+    Thread a = new Thread(printerA::print, "Thread-A");
+    Thread b = new Thread(printerB::print, "Thread-B");
+
+    a.start();
+    b.start();
+    a.join();
+    b.join();
+}
+```
+
+Each thread now uses a different object's monitor. Their protected
+sections can overlap. You may see both "entered" messages before either
+"leaving" message.
+
+### Important: `Thread.sleep()` does not release the monitor
+
+The thread sleeps while still inside the synchronized block. It
+continues to own the monitor. Therefore, another thread trying to
+synchronize on the same object still waits.
+
+We will compare this with `wait()` later.
+
+## 4. An instance synchronized method uses `this`
+
+These two methods acquire the same monitor:
+
+``` java
+class Account {
+    public synchronized void deposit() {
+        // protected by this object's monitor
+    }
+
+    public void withdraw() {
+        synchronized (this) {
+            // protected by this object's monitor
+        }
+    }
+}
+```
+
+An instance synchronized method:
+
+``` java
+public synchronized void deposit() {
+    // ...
+}
+```
+
+is conceptually equivalent to:
+
+``` java
+public void deposit() {
+    synchronized (this) {
+        // ...
+    }
+}
+```
+
+So if Thread A is inside `deposit()` and Thread B calls `withdraw()` on
+the same Account object, B must wait. The method names do not matter;
+the monitor identity matters.
+
+## 5. Static synchronized methods use the Class object
+
+Instance synchronized methods lock `this`. Static methods have no
+`this`, because they belong to the class rather than one instance.
+
+A static synchronized method locks the class's `Class` object:
+
+``` java
+class BookingNumberGenerator {
+    public static synchronized void generate() {
+        System.out.println("Generating booking number");
+    }
+}
+```
+
+Conceptually equivalent:
+
+``` java
+class BookingNumberGenerator {
+    public static void generate() {
+        synchronized (BookingNumberGenerator.class) {
+            System.out.println("Generating booking number");
+        }
+    }
+}
+```
+
+Compare:
+
+``` java
+class Example {
+    public synchronized void instanceMethod() {
+        // Locks this instance
+    }
+
+    public static synchronized void staticMethod() {
+        // Locks Example.class
+    }
+}
+```
+
+These are different monitors. An instance method does not automatically
+block a static synchronized method.
+
+Also: - Two different instances have different instance monitors. - All
+calls to static synchronized methods of this class use the same class
+monitor.
+
+### Runnable experiment
+
+``` java
+public class ClassLockDemo {
+
+    static class Worker {
+        public synchronized void instanceWork() {
+            System.out.println("Instance method started");
+            sleep();
+            System.out.println("Instance method finished");
+        }
+
+        public static synchronized void staticWork() {
+            System.out.println("Static method started");
+            sleep();
+            System.out.println("Static method finished");
+        }
+
+        private static void sleep() {
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        Worker worker = new Worker();
+
+        Thread a = new Thread(worker::instanceWork, "Instance-Thread");
+        Thread b = new Thread(Worker::staticWork, "Static-Thread");
+
+        a.start();
+        b.start();
+
+        a.join();
+        b.join();
+    }
+}
+```
+
+The instance method and static method use different monitors, so they
+can execute concurrently.
+
+## 6. Intrinsic locks are reentrant
+
+A lock is **reentrant** when a thread that already owns it can acquire
+that same lock again.
+
+``` java
+public class ReentrantDemo {
+
+    public synchronized void methodA() {
+        System.out.println("Entered methodA");
+        methodB();
+    }
+
+    public synchronized void methodB() {
+        System.out.println("Entered methodB");
+    }
+
+    public static void main(String[] args) {
+        ReentrantDemo demo = new ReentrantDemo();
+        demo.methodA();
+    }
+}
+```
+
+What happens?
+
+1.  The main thread calls `methodA()` and acquires `demo`'s monitor.
+2.  `methodA()` calls `methodB()`.
+3.  `methodB()` tries to acquire the same monitor.
+4.  The same thread already owns it, so it can acquire it again.
+5.  `methodB()` runs. It exits and releases its acquisition.
+6.  `methodA()` exits and releases its acquisition.
+
+The thread does not block itself. Conceptually, the monitor tracks how
+many times its owning thread has entered it. The monitor becomes
+available to another thread only after the owning thread exits the
+corresponding synchronized regions.
+
+**Reentrancy does not allow another thread to enter.** A second thread
+still waits.
+
+Try adding a second thread that calls `methodB()` while the first thread
+is inside `methodA()`.
+
+## 7. When is a monitor released?
+
+Java releases an intrinsic monitor when execution exits the synchronized
+block or method: - reaching the end of the block; - returning from the
+synchronized method; - exiting because an exception is thrown.
+
+Example:
+
+``` java
+synchronized (lock) {
+    doSomething();
+    throw new RuntimeException("Something failed");
+}
+```
+
+Even though an exception occurs, Java releases the monitor as the block
+is exited.
+
+You do not manually unlock an intrinsic monitor. Java handles it
+automatically. This differs from explicit lock APIs such as
+`ReentrantLock`, where you normally call `unlock()` in a `finally`
+block.
+
+## 8. Monitors are connected to wait() and notify()
+
+You will study `wait()`, `notify()`, and `notifyAll()` in detail later.
+For now, know that these methods belong to `Object` and are associated
+with that object's monitor.
+
+``` java
+synchronized (lock) {
+    lock.wait();
+}
+```
+
+A thread calling `wait()` must own that object's monitor. `wait()`
+releases that monitor while the thread waits. Before `wait()` returns,
+the thread must reacquire the same monitor.
+
+Compare:
+
+``` java
+synchronized (lock) {
+    Thread.sleep(1000);
+}
+```
+
+`Thread.sleep()` pauses the thread but does **not** release the monitor.
+
+Do not use `wait()` or `notify()` as a casual replacement for a lock.
+Their correct use requires condition-checking loops and careful
+coordination, which we will cover in their own lessons.
+
+## 9. Turf system-design connection: what does a monitor protect?
+
+Imagine one Spring Boot process receives two requests to reserve the
+same in-memory slot:
+
+``` java
+class InMemorySlot {
+    private boolean booked = false;
+
+    public synchronized boolean book() {
+        if (booked) {
+            return false;
+        }
+
+        booked = true;
+        return true;
+    }
+}
+```
+
+If both request threads call `book()` on the **same InMemorySlot
+instance**, the monitor ensures only one executes the method at a time.
+
+But consider two problems.
+
+### Problem A: each request creates a new slot object
+
+Each object has its own monitor. The two calls do not coordinate. The
+identity and lifecycle of shared objects matter.
+
+### Problem B: the application has multiple servers
+
+``` text
+                 Customers
+                     |
+               Load Balancer
+                /    |    \\
+               /     |     \\
+          Server 1 Server 2 Server 3
+            JVM 1    JVM 2    JVM 3
+              |        |        |
+          Slot obj  Slot obj  Slot obj
+          Lock A    Lock B    Lock C
+                \\      |      /
+                   Database
+```
+
+The monitors in JVM 1, JVM 2, and JVM 3 are separate. A monitor is not a
+distributed lock. Even if every server runs identical Java code, each
+process has its own object instances and intrinsic monitors.
+
+### What should enforce real booking correctness?
+
+For the production Turf backend:
+
+1.  Model the slot or booking identity in the database.
+2.  Use database constraints to prevent duplicate reservations for the
+    same slot, or a suitable database-specific mechanism to prevent
+    overlapping time ranges.
+3.  Perform the reservation operation inside a transaction.
+4.  Choose an appropriate pessimistic or optimistic concurrency
+    strategy.
+5.  Handle a losing concurrent request as a booking conflict, not as a
+    success.
+6.  Use idempotency keys or equivalent request deduplication for
+    retryable booking/payment flows.
+
+A Java monitor may protect short-lived in-memory state inside one
+process. It must not be the only correctness mechanism for bookings
+stored in a shared database.
+
+## 10. Common misconceptions
+
+**Misconception 1: The method owns the lock.**\
+No. An instance synchronized method acquires `this`; a static
+synchronized method acquires the class's `Class` object monitor.
+
+**Misconception 2: All objects of one class share one instance lock.**\
+No. Each instance has its own monitor. Static synchronized methods use
+the class monitor.
+
+**Misconception 3: A sleeping thread releases its monitor.**\
+No. `Thread.sleep()` does not release an intrinsic monitor.
+
+**Misconception 4: Reentrant means multiple threads can enter.**\
+No. It means the same owning thread can acquire the monitor again. Other
+threads still wait.
+
+**Misconception 5: A monitor protects every access to an object's fields
+automatically.**\
+No. Only code that acquires the same monitor participates in that
+synchronization. Unsynchronized code can still access the fields without
+acquiring it.
+
+**Misconception 6: A monitor is shared across all Spring Boot
+servers.**\
+No. Intrinsic monitors are local to objects inside one JVM.
+
+## 11. Interview questions
+
+Try answering before reading each answer.
+
+**Q1. What is an intrinsic lock?**\
+Java's built-in monitor-based locking mechanism used by `synchronized`.
+Each object can serve as the lock.
+
+**Q2. What is the relationship between an object and its monitor?**\
+The monitor is the synchronization mechanism associated with the object.
+A synchronized block uses the monitor of the object expression inside
+its parentheses.
+
+**Q3. If two threads synchronize on two different objects of the same
+class, do they block each other?**\
+Not merely because they are instances of the same class. Different
+objects have different instance monitors.
+
+**Q4. What lock does an instance synchronized method use?**\
+The current instance's monitor (`this`).
+
+**Q5. What lock does a static synchronized method use?**\
+The monitor of that class's `Class` object, such as `Example.class`.
+
+**Q6. Can a static synchronized method and an instance synchronized
+method block each other?**\
+Not just because they belong to the same class. They use different
+monitors: the class object and an instance object.
+
+**Q7. What does reentrant mean?**\
+A thread that already owns a monitor can acquire the same monitor again
+without blocking itself.
+
+**Q8. Does `Thread.sleep()` release a monitor?**\
+No. The thread continues to own any intrinsic monitor it acquired.
+
+**Q9. When is a monitor released?**\
+When the thread exits the synchronized block or method, including by
+returning or throwing an exception.
+
+**Q10. Does synchronized locking work across multiple JVMs?**\
+No. Intrinsic locks coordinate threads within one JVM. Cross-instance
+coordination needs a shared mechanism such as database constraints and
+transactions.
+
+## 12. Practice questions
+
+### Practice 1 --- Same class, different objects
+
+``` java
+class Printer {
+    public synchronized void print() {
+        System.out.println("Printing");
+    }
+}
+
+Printer p1 = new Printer();
+Printer p2 = new Printer();
+```
+
+Thread A calls `p1.print()`. Thread B calls `p2.print()`.
+
+1.  Do they use the same monitor?
+2.  Must Thread B wait for Thread A to finish?
+3.  What changes if both threads call `p1.print()`?
+
+Explain your reasoning.
+
+### Practice 2 --- Instance lock or class lock?
+
+``` java
+class BookingService {
+    public synchronized void createBooking() {
+        // ...
+    }
+
+    public static synchronized void clearCache() {
+        // ...
+    }
+}
+```
+
+1.  Which monitor does `createBooking()` acquire?
+2.  Which monitor does `clearCache()` acquire?
+3.  Can one method run while the other is executing?
+4.  What if two different `BookingService` instances call
+    `createBooking()`?
+
+### Practice 3 --- Find the misconception
+
+A developer says:
+
+> "Thread A is sleeping inside a synchronized method, so Java releases
+> the lock while A sleeps. Thread B can use the same object during that
+> time."
+
+Is the developer correct? Explain what actually happens.
+
+### Practice 4 --- Reentrant lock reasoning
+
+``` java
+class Example {
+    public synchronized void first() {
+        second();
+    }
+
+    public synchronized void second() {
+        System.out.println("Second");
+    }
+}
+```
+
+1.  Does this deadlock when one thread calls `first()`?
+2.  Why can `second()` enter?
+3.  Can a second thread calling `second()` enter while the first thread
+    is still inside `first()`?
+
+### Practice 5 --- Exception handling
+
+``` java
+class Example {
+    private final Object lock = new Object();
+
+    public void runTask() {
+        synchronized (lock) {
+            throw new RuntimeException("Failure");
+        }
+    }
+}
+```
+
+After `runTask()` throws the exception, can another thread later acquire
+`lock`? Why?
+
+### Practice 6 --- Spot the bug
+
+``` java
+class Counter {
+    private int count = 0;
+
+    public synchronized void increment() {
+        count++;
+    }
+
+    public int getCount() {
+        return count;
+    }
+}
+```
+
+The developer says: "The increment method is synchronized, so all access
+to count is thread-safe."
+
+Is that statement fully correct? What is missing from the design?
+
+### Practice 7 --- Turf system design
+
+Your Turf application has three Spring Boot instances. Each instance has
+a synchronized `book()` method. Two customers request the same slot, and
+their requests reach different instances.
+
+1.  Which monitor does each request acquire?
+2.  Why can both requests enter their methods?
+3.  What should prevent both bookings from committing in the database?
+4.  What should the API do when one request loses the concurrency race?
+
+### Practice 8 --- Build and observe
+
+Create a `SharedPrinter` class with a synchronized instance method
+that: 1. Prints the thread name and "entered". 2. Sleeps for two
+seconds. 3. Prints the thread name and "leaving".
+
+Run two threads against: - The same `SharedPrinter` instance. - Two
+different `SharedPrinter` instances.
+
+Write down what changes and explain why.
+
+## 13. Lesson recap
+
+1.  Every Java object can be used as an intrinsic lock.
+2.  A synchronized block acquires the monitor associated with its lock
+    object.
+3.  An instance synchronized method uses `this`; a static synchronized
+    method uses the class's `Class` object.
+4.  The same monitor allows only one owning thread at a time, but it is
+    reentrant for that same thread.
+5.  `Thread.sleep()` does not release the monitor; `wait()` has
+    different behavior.
+6.  Java intrinsic locks coordinate threads inside one JVM, not separate
+    Spring Boot instances.
+
+**Next lesson: Static Synchronization** --- we will focus more deeply on
+class-level locking, what it protects, and common mistakes when mixing
+static and instance state.
