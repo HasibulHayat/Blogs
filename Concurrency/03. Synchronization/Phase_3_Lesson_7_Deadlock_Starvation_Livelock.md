@@ -1,4 +1,4 @@
-# Phase 3 --- Lesson 7: Deadlock, Starvation, and Livelock
+# Java Concurrency - Phase 3 Lesson 7 : Deadlock, Starvation, and Livelock
 
 ## 1. Why do these problems happen?
 
