@@ -1,0 +1,884 @@
+# Phase 3 --- Lesson 5: `volatile`
+
+## 1. What you will learn
+
+By the end of this lesson, you should understand:
+
+-   What problem `volatile` solves.
+-   The difference between visibility and atomicity.
+-   Why one thread may not immediately observe another thread's update
+    to an ordinary field.
+-   What a `volatile` read and write guarantee.
+-   Why `volatile` does not replace `synchronized`.
+-   When `volatile` is useful in a Spring Boot backend.
+-   Why `volatile int count` does not make `count++` thread-safe.
+
+------------------------------------------------------------------------
+
+## 2. First, the problem: visibility
+
+Imagine two threads share one variable:
+
+``` java
+class SharedFlag {
+    boolean running = true;
+}
+```
+
+Thread 1 checks the flag:
+
+``` java
+while (sharedFlag.running) {
+    // Keep working
+}
+```
+
+Thread 2 changes it:
+
+``` java
+sharedFlag.running = false;
+```
+
+You might expect Thread 1 to see `false` and stop.
+
+But ordinary, unsynchronized access to shared mutable data does not
+guarantee that Thread 1 will observe Thread 2's update in the way you
+expect.
+
+Why?
+
+Modern Java programs run on top of a JVM, an operating system, and
+hardware that optimize how code executes. A thread may reuse a
+previously read value, and the compiler or runtime may reorder
+operations when the Java Memory Model allows it.
+
+The important point is not that Java always caches a variable in a CPU
+register. The important point is that, without a synchronization
+relationship, the Java Memory Model does not guarantee the visibility
+and ordering you need.
+
+This is a **visibility problem**.
+
+### Three concepts to distinguish
+
+-   **Visibility:** Does one thread observe another thread's update?
+-   **Atomicity:** Does an operation happen as one indivisible action?
+-   **Ordering:** Are operations observed in the required order?
+
+`volatile` primarily gives you visibility and ordering guarantees for
+accesses to that variable. It does not make compound operations atomic.
+
+------------------------------------------------------------------------
+
+## 3. What is `volatile`?
+
+`volatile` is a Java keyword that can be applied to a field.
+
+``` java
+class SharedFlag {
+    volatile boolean running = true;
+}
+```
+
+When one thread writes to a volatile variable, that write has a
+*happens-before* relationship with a subsequent read of that same
+variable by another thread.
+
+In practical terms, this gives the threads the visibility and ordering
+guarantees needed for a shared flag:
+
+``` java
+class SharedFlag {
+    private volatile boolean running = true;
+
+    public void work() {
+        while (running) {
+            // Do work while running is true
+        }
+
+        System.out.println("Worker stopped");
+    }
+
+    public void stop() {
+        running = false;
+    }
+}
+```
+
+A write of `false` to `running` by one thread will be visible to a
+subsequent read of `running` by the worker thread.
+
+**Important:** this does not mean the worker stops at the exact instant
+`stop()` is called. The worker must reach and perform another read of
+the flag. If it is blocked in some operation, `volatile` does not
+automatically interrupt that operation.
+
+------------------------------------------------------------------------
+
+## 4. Runnable experiment: a worker that should stop
+
+Create `VolatileStopDemo.java`:
+
+``` java
+public class VolatileStopDemo {
+
+    private static volatile boolean running = true;
+
+    public static void main(String[] args) throws InterruptedException {
+
+        Thread worker = new Thread(() -> {
+            System.out.println("Worker started");
+
+            while (running) {
+                // Simulate a worker repeatedly checking its state
+            }
+
+            System.out.println("Worker stopped");
+        });
+
+        worker.start();
+
+        Thread.sleep(1000);
+
+        System.out.println("Main thread requests stop");
+        running = false;
+
+        worker.join();
+
+        System.out.println("Main thread finished");
+    }
+}
+```
+
+Run it:
+
+``` bash
+javac VolatileStopDemo.java
+java VolatileStopDemo
+```
+
+You should see the worker start, the main thread request a stop, and
+then the worker stop.
+
+### Experiment: remove `volatile`
+
+Change:
+
+``` java
+private static volatile boolean running = true;
+```
+
+to:
+
+``` java
+private static boolean running = true;
+```
+
+Run the program again.
+
+It may still stop. It may also appear to keep running for a long time,
+depending on the JVM, runtime optimizations, and execution environment.
+
+Do not treat one successful run as proof that the ordinary field is
+safe. The ordinary-field version has no Java Memory Model guarantee that
+makes this cross-thread communication correct.
+
+Also note: `Thread.sleep()` in the main thread does not itself make the
+worker see the update. Sleeping is not a substitute for a proper
+visibility mechanism.
+
+------------------------------------------------------------------------
+
+## 5. What guarantee does volatile provide?
+
+For a particular volatile field:
+
+1.  A write to that field has volatile-write semantics.
+2.  A subsequent read of that same field has volatile-read semantics.
+3.  A volatile write happens-before a subsequent read of that field.
+4.  The JVM must respect the ordering guarantees defined by the Java
+    Memory Model around those accesses.
+
+Example:
+
+``` java
+class Message {
+    int value = 0;
+    volatile boolean ready = false;
+}
+```
+
+Writer thread:
+
+``` java
+message.value = 42;
+message.ready = true;
+```
+
+Reader thread:
+
+``` java
+if (message.ready) {
+    System.out.println(message.value);
+}
+```
+
+If the reader observes `ready == true` through the volatile read, the
+preceding write to `value` is visible to that reader as well.
+
+Why? The writer's write to `value` happens before its volatile write to
+`ready` in program order. The volatile write to `ready` happens-before
+the reader's subsequent volatile read that observes it. That read
+happens before the reader accesses `value` in program order.
+
+This creates a happens-before chain:
+
+``` text
+Writer thread                         Reader thread
+
+value = 42
+    |
+    v
+ready = true  -- volatile write
+                    |
+                    | happens-before
+                    v
+                 read ready  -- volatile read
+                    |
+                    v
+                 read value
+```
+
+This is a very useful pattern: write the data first, then publish a
+volatile flag indicating that the data is ready.
+
+For this example, make sure the writer publishes the data before setting
+the flag, and the reader checks the flag before reading the data.
+
+------------------------------------------------------------------------
+
+## 6. The biggest misconception: volatile does NOT make `count++` atomic
+
+Consider:
+
+``` java
+class Counter {
+    private volatile int count = 0;
+
+    public void increment() {
+        count++;
+    }
+
+    public int getCount() {
+        return count;
+    }
+}
+```
+
+Is this thread-safe if many threads call `increment()`?
+
+**No.**
+
+Why?
+
+`count++` is not one indivisible operation. Conceptually, it involves:
+
+1.  Read the current value.
+2.  Add one.
+3.  Write the new value.
+
+Imagine `count` is `10`:
+
+``` text
+Thread A reads 10
+Thread B reads 10
+Thread A calculates 11
+Thread B calculates 11
+Thread A writes 11
+Thread B writes 11
+```
+
+The final value is `11`, even though two increments occurred. One
+increment was lost.
+
+`volatile` makes reads and writes of the field visible according to its
+memory guarantees. It does not combine the read, addition, and write
+into one atomic operation.
+
+### Runnable counter experiment
+
+Create `VolatileCounterDemo.java`:
+
+``` java
+public class VolatileCounterDemo {
+
+    private static volatile int count = 0;
+
+    public static void main(String[] args) throws InterruptedException {
+
+        int numberOfThreads = 10;
+        int incrementsPerThread = 100_000;
+
+        Thread[] threads = new Thread[numberOfThreads];
+
+        for (int i = 0; i < numberOfThreads; i++) {
+            threads[i] = new Thread(() -> {
+                for (int j = 0; j < incrementsPerThread; j++) {
+                    count++;
+                }
+            });
+        }
+
+        for (Thread thread : threads) {
+            thread.start();
+        }
+
+        for (Thread thread : threads) {
+            thread.join();
+        }
+
+        int expected = numberOfThreads * incrementsPerThread;
+
+        System.out.println("Expected: " + expected);
+        System.out.println("Actual:   " + count);
+    }
+}
+```
+
+Run it:
+
+``` bash
+javac VolatileCounterDemo.java
+java VolatileCounterDemo
+```
+
+The expected value is `1000000`. The actual value may be lower because
+increments can be lost.
+
+The exact result can vary. The important thing is that `volatile` does
+not guarantee the expected count.
+
+### What should you use for a concurrent counter?
+
+Use `AtomicInteger` for a simple atomic counter:
+
+``` java
+import java.util.concurrent.atomic.AtomicInteger;
+
+class Counter {
+    private final AtomicInteger count = new AtomicInteger(0);
+
+    public void increment() {
+        count.incrementAndGet();
+    }
+
+    public int getCount() {
+        return count.get();
+    }
+}
+```
+
+Or use synchronization:
+
+``` java
+class Counter {
+    private int count = 0;
+
+    public synchronized void increment() {
+        count++;
+    }
+
+    public synchronized int getCount() {
+        return count;
+    }
+}
+```
+
+Use the tool that matches the operation and the state you need to
+protect.
+
+------------------------------------------------------------------------
+
+## 7. `volatile` vs `synchronized`
+
+  -----------------------------------------------------------------------
+  Feature                 `volatile`              `synchronized`
+  ----------------------- ----------------------- -----------------------
+  Visibility              Yes, for the volatile   Yes, through monitor
+                          field and the           release/acquisition
+                          associated              
+                          happens-before effects  
+
+  Mutual exclusion        No                      Yes, for code protected
+                                                  by the same monitor
+
+  Makes `count++` atomic? No                      Yes, if the entire
+                                                  increment is protected
+                                                  by the same lock
+
+  Can coordinate a        Not by itself           Yes
+  multi-step critical                             
+  section?                                        
+
+  Uses a monitor lock?    No                      Yes
+
+  Useful for a simple     Often                   Also possible, but may
+  state flag?                                     be more than needed
+  -----------------------------------------------------------------------
+
+### Example: a flag
+
+``` java
+private volatile boolean active = true;
+```
+
+If threads only need to read and write a simple independent state flag,
+`volatile` may be appropriate.
+
+### Example: a multi-step operation
+
+``` java
+if (availableSlots > 0) {
+    availableSlots--;
+}
+```
+
+This is a check-then-act operation. `volatile` on `availableSlots` does
+not make the whole sequence atomic.
+
+You need a lock, an atomic design that correctly represents the
+operation, or a database-level solution if this is shared across
+application instances.
+
+------------------------------------------------------------------------
+
+## 8. When should you use volatile?
+
+Good candidates include:
+
+### A. Stop or shutdown flag
+
+``` java
+private volatile boolean running = true;
+
+public void stop() {
+    running = false;
+}
+```
+
+One thread updates the flag; another periodically checks it.
+
+### B. A simple state indicator
+
+``` java
+private volatile boolean maintenanceMode = false;
+```
+
+This can work if the flag is independent and the application only needs
+visibility of its latest value.
+
+### C. Publishing a simple readiness signal
+
+``` java
+private int configurationVersion;
+private volatile boolean initialized;
+```
+
+A thread can initialize the data first and then set
+`initialized = true`. Other threads that observe the volatile flag as
+true can also observe the writes that happened before the flag was set.
+
+Be careful: this pattern is only appropriate when the publication order
+is controlled and the published data is not then mutated unsafely.
+
+### D. A volatile reference
+
+A reference itself can be volatile:
+
+``` java
+private volatile Config currentConfig;
+```
+
+Replacing the reference is visible to threads that subsequently read it.
+
+But `volatile` does not make the object graph behind the reference
+magically thread-safe. If multiple threads mutate fields inside the same
+`Config` object, those mutations need their own safe coordination.
+
+------------------------------------------------------------------------
+
+## 9. When should you NOT use volatile alone?
+
+Do not rely on `volatile` alone when:
+
+-   You need `count++` or another compound read-modify-write operation
+    to be atomic.
+-   You need to check a condition and then update state as one
+    indivisible operation.
+-   Several fields must change together while preserving an invariant.
+-   You need to protect a collection while multiple threads modify it.
+-   You need to coordinate booking requests across multiple Spring Boot
+    instances.
+
+Example of a multi-field invariant:
+
+``` java
+class BookingState {
+    volatile int bookedCount;
+    volatile int remainingCapacity;
+}
+```
+
+Making both fields volatile does not make this pair update atomically.
+Another thread may observe a combination of values from different
+moments.
+
+For related state, consider one synchronized critical section, an
+explicit lock, an immutable state object published through one volatile
+reference, or a database transaction, depending on the problem.
+
+------------------------------------------------------------------------
+
+## 10. Turf backend example: maintenance mode
+
+Imagine your Turf backend has an in-memory maintenance flag:
+
+``` java
+public class MaintenanceSwitch {
+
+    private volatile boolean maintenanceMode = false;
+
+    public boolean isMaintenanceMode() {
+        return maintenanceMode;
+    }
+
+    public void enableMaintenance() {
+        maintenanceMode = true;
+    }
+
+    public void disableMaintenance() {
+        maintenanceMode = false;
+    }
+}
+```
+
+Request-handling code might check:
+
+``` java
+if (maintenanceSwitch.isMaintenanceMode()) {
+    // Return a maintenance response
+}
+```
+
+Within one JVM, `volatile` ensures that a thread reading the flag can
+observe updates made by another thread.
+
+But there is a critical distributed-systems limitation:
+
+``` text
+             Load Balancer
+             /     |     \
+          App A   App B   App C
+          false   false   false
+
+Admin changes App A's in-memory flag:
+
+          App A   App B   App C
+          true    false   false
+```
+
+Each Spring Boot instance has its own `MaintenanceSwitch` object and its
+own volatile field. `volatile` does not synchronize those separate
+copies.
+
+For a platform-wide maintenance switch, use shared state, such as:
+
+-   A database-backed setting.
+-   A centrally managed configuration service.
+-   A distributed cache or messaging-based update mechanism, with a
+    clear consistency strategy.
+
+The right design depends on how quickly every instance must observe the
+change and what should happen if the shared system is unavailable.
+
+### Another Turf example: booking capacity
+
+This is not safe:
+
+``` java
+private volatile int remainingSlots = 1;
+
+public boolean book() {
+    if (remainingSlots > 0) {
+        remainingSlots--;
+        return true;
+    }
+    return false;
+}
+```
+
+Two request threads can both read `1` before either writes `0`. Both may
+conclude they successfully booked the last slot.
+
+For real bookings, enforce the invariant in the shared database using
+transactions and appropriate constraints or locking. A JVM-level
+volatile field cannot protect a booking across multiple application
+instances.
+
+------------------------------------------------------------------------
+
+## 11. A note on double-checked locking
+
+You may see `volatile` used in a singleton pattern:
+
+``` java
+public class Singleton {
+
+    private static volatile Singleton instance;
+
+    private Singleton() {}
+
+    public static Singleton getInstance() {
+        if (instance == null) {
+            synchronized (Singleton.class) {
+                if (instance == null) {
+                    instance = new Singleton();
+                }
+            }
+        }
+
+        return instance;
+    }
+}
+```
+
+Why is `instance` volatile here?
+
+It helps ensure safe publication of the newly created object and
+prevents the relevant reordering problem that can make another thread
+observe a reference before construction is safely visible.
+
+This is an advanced use case. Do not memorize the pattern without
+understanding the Java Memory Model. In ordinary Spring Boot
+applications, let Spring manage singleton beans rather than implementing
+your own singleton pattern.
+
+Also remember: a Spring singleton bean means one bean instance per
+application context, not one instance shared across all JVMs.
+
+------------------------------------------------------------------------
+
+## 12. Common mistakes
+
+### Mistake 1: Thinking volatile means thread-safe
+
+It does not make every operation involving the variable atomic.
+
+### Mistake 2: Using volatile for `count++`
+
+The increment is a compound operation. Use `AtomicInteger`,
+synchronization, or another suitable mechanism.
+
+### Mistake 3: Thinking volatile locks the variable
+
+It does not acquire a monitor or block other threads from accessing the
+field.
+
+### Mistake 4: Thinking `Thread.sleep()` guarantees visibility
+
+Sleeping is not a synchronization mechanism.
+
+### Mistake 5: Making two related fields volatile and assuming they update together
+
+Each volatile access has its own guarantees. Two fields do not become
+one atomic state transition.
+
+### Mistake 6: Thinking volatile works across application instances
+
+It only provides Java Memory Model guarantees between threads that share
+the same variable in the same running JVM.
+
+### Mistake 7: Thinking volatile makes the object behind a reference thread-safe
+
+It makes access to the reference volatile. It does not automatically
+coordinate mutations inside the referenced object.
+
+------------------------------------------------------------------------
+
+## 13. Interview questions
+
+**Q1. What is volatile in Java?**
+
+A field modifier that provides visibility and ordering guarantees for
+reads and writes of that field under the Java Memory Model.
+
+**Q2. What problem does volatile solve?**
+
+It helps one thread observe updates to a shared field made by another
+thread, with defined ordering guarantees.
+
+**Q3. Does volatile provide mutual exclusion?**
+
+No. It does not lock a critical section.
+
+**Q4. Is `volatile int count; count++;` thread-safe?**
+
+No. Increment is a read-modify-write operation and is not made atomic by
+volatile.
+
+**Q5. What is the difference between volatile and synchronized?**
+
+Volatile provides visibility and ordering for a field. Synchronized
+provides mutual exclusion through a monitor and also establishes
+visibility through monitor release/acquisition.
+
+**Q6. What is a happens-before relationship?**
+
+A rule in the Java Memory Model that guarantees the effects of one
+action are visible to another action that happens after it in the
+happens-before order.
+
+**Q7. Does `Thread.sleep()` make a field visible to another thread?**
+
+No. Sleep does not establish a happens-before relationship for arbitrary
+shared variables.
+
+**Q8. Can a reference be volatile?**
+
+Yes. A volatile reference makes reads and writes of that reference obey
+volatile semantics. It does not automatically make the referenced object
+thread-safe.
+
+**Q9. Can volatile coordinate multiple Spring Boot instances?**
+
+No. Separate JVMs do not share the same Java field or volatile memory
+semantics.
+
+**Q10. When is volatile a good choice?**
+
+For simple independent state, such as a stop flag, when you need
+visibility and do not need a compound operation or multi-field invariant
+to be atomic.
+
+------------------------------------------------------------------------
+
+## 14. Practice exercises
+
+Try to answer these before moving on.
+
+### Exercise 1 --- Explain the bug
+
+``` java
+class Worker {
+    private boolean running = true;
+
+    public void work() {
+        while (running) {
+        }
+    }
+
+    public void stop() {
+        running = false;
+    }
+}
+```
+
+What visibility problem may occur? What is the smallest change that
+gives the flag the required visibility semantics?
+
+### Exercise 2 --- Is this thread-safe?
+
+``` java
+class Counter {
+    private volatile int count = 0;
+
+    public void increment() {
+        count++;
+    }
+}
+```
+
+Explain exactly why or why not.
+
+### Exercise 3 --- Choose the right tool
+
+Choose `volatile`, `synchronized`, or `AtomicInteger` for each case, and
+explain your choice:
+
+1.  One thread sets a stop flag; another checks it.
+2.  Many threads increment one shared counter.
+3.  Two fields must be updated together while preserving an invariant.
+4.  Several threads read a configuration reference while one thread
+    replaces the reference.
+
+### Exercise 4 --- Understand publication
+
+``` java
+class Message {
+    int data;
+    volatile boolean ready;
+}
+```
+
+A writer sets `data = 99`, then `ready = true`. A reader waits until it
+sees `ready == true`, then reads `data`.
+
+Why can the reader safely observe the earlier write to `data` in this
+pattern?
+
+### Exercise 5 --- Find the distributed-systems problem
+
+Three Spring Boot instances each have:
+
+``` java
+private volatile boolean maintenanceMode = false;
+```
+
+An administrator changes the flag in App A. Will Apps B and C
+automatically see the change? Why not? Suggest a shared-state design.
+
+### Exercise 6 --- Repair the booking code
+
+``` java
+class Slot {
+    private volatile int remaining = 1;
+
+    public boolean book() {
+        if (remaining > 0) {
+            remaining--;
+            return true;
+        }
+        return false;
+    }
+}
+```
+
+Explain the race condition. What would you use for a single-JVM
+exercise, and what must a real multi-instance Turf backend enforce?
+
+------------------------------------------------------------------------
+
+## 15. Lesson summary
+
+Remember these points:
+
+1.  `volatile` provides visibility and ordering guarantees for a field.
+2.  A volatile write happens-before a subsequent volatile read of that
+    same field.
+3.  `volatile` does not provide mutual exclusion.
+4.  `volatile` does not make compound operations such as `count++`
+    atomic.
+5.  It is useful for simple shared state, such as a stop flag.
+6.  It does not coordinate separate Spring Boot instances.
+
+**The central idea:** use `volatile` when threads need to see updates to
+a simple shared field; use atomic operations, locks, or database
+coordination when the operation itself must be indivisible.
+
+## Next lesson
+
+**Phase 3 --- Lesson 6: `wait()`, `notify()`, and `notifyAll()`**
+
+We will learn how threads can wait for a condition, how notification
+works with an object's monitor, and why `wait()` releases the monitor
+while `sleep()` does not.
