@@ -1,0 +1,454 @@
+# Phase 3 --- Lesson 6: `wait()`, `notify()`, and `notifyAll()`
+
+## 1. What problem do these methods solve?
+
+Imagine a kitchen:
+
+-   A chef prepares food.
+-   A customer is waiting for food.
+-   The customer should not repeatedly ask, "Is it ready yet?"
+-   The chef should notify the customer when the food is ready.
+
+In Java, `wait()`, `notify()`, and `notifyAll()` help threads coordinate
+when one thread must wait for a condition and another thread can make
+that condition true.
+
+They are methods of `Object`, not `Thread`.
+
+## 2. The three methods in simple words
+
+### `wait()`
+
+The current thread:
+
+1.  Must own the object's monitor.
+2.  Releases that object's monitor.
+3.  Enters a waiting state.
+4.  Waits until it is notified, interrupted, or wakes spuriously.
+5.  Must reacquire the same monitor before `wait()` returns.
+
+Important: `wait()` releases the monitor of the object on which it is
+called. It does not release every lock the thread may hold.
+
+### `notify()`
+
+-   Wakes one thread waiting on that object's monitor.
+-   The notifying thread does **not** immediately give up the monitor.
+-   The awakened thread can continue only after it reacquires the
+    monitor.
+
+### `notifyAll()`
+
+-   Wakes all threads waiting on that object's monitor.
+-   They compete to reacquire the monitor.
+-   Only one thread can own that monitor at a time.
+-   Each awakened thread must check its condition again.
+
+## 3. Why must `wait()` be inside `synchronized`?
+
+A thread must own an object's monitor before calling `wait()` on that
+object. Otherwise Java throws `IllegalMonitorStateException`.
+
+``` java
+Object lock = new Object();
+
+synchronized (lock) {
+    lock.wait();
+}
+```
+
+The same ownership rule applies to `notify()` and `notifyAll()`:
+
+``` java
+synchronized (lock) {
+    lock.notifyAll();
+}
+```
+
+The monitor being owned must be the monitor of the exact object
+receiving the call.
+
+## 4. A runnable demonstration
+
+This example shows one thread waiting and another notifying it.
+
+``` java
+public class WaitNotifyDemo {
+    private static final Object lock = new Object();
+    private static boolean ready = false;
+
+    public static void main(String[] args) {
+        Thread consumer = new Thread(() -> {
+            synchronized (lock) {
+                while (!ready) {
+                    try {
+                        System.out.println("Consumer: not ready; waiting...");
+                        lock.wait();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+
+                System.out.println("Consumer: condition is ready!");
+            }
+        });
+
+        Thread producer = new Thread(() -> {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+
+            synchronized (lock) {
+                ready = true;
+                System.out.println("Producer: notifying consumer");
+                lock.notifyAll();
+            }
+        });
+
+        consumer.start();
+        producer.start();
+    }
+}
+```
+
+### What happens step by step?
+
+1.  The consumer enters `synchronized (lock)` and owns `lock`'s monitor.
+2.  It sees `ready == false`.
+3.  It calls `lock.wait()`.
+4.  The consumer releases `lock`'s monitor and waits.
+5.  The producer later enters `synchronized (lock)`.
+6.  The producer sets `ready = true` and calls `notifyAll()`.
+7.  The producer still owns the monitor until it exits the synchronized
+    block.
+8.  The consumer becomes eligible to run, but must first reacquire the
+    monitor.
+9.  The consumer checks `ready` again and continues.
+
+The exact order of printed lines can vary slightly because thread
+scheduling is not deterministic.
+
+## 5. Why use `while`, not `if`?
+
+This is one of the most important rules.
+
+**Incorrect:**
+
+``` java
+synchronized (lock) {
+    if (!ready) {
+        lock.wait();
+    }
+
+    // Assumes ready is true
+}
+```
+
+**Correct:**
+
+``` java
+synchronized (lock) {
+    while (!ready) {
+        lock.wait();
+    }
+
+    // The condition has been checked again while holding the monitor.
+}
+```
+
+Why?
+
+-   Java permits spurious wakeups: a waiting thread can wake without a
+    notification that makes the condition true.
+-   `notifyAll()` can wake several threads, but only one may be able to
+    consume the available work.
+-   Another thread may change the condition before this thread
+    reacquires the monitor.
+
+The loop makes the thread re-check the actual condition every time it
+wakes.
+
+## 6. Producer-consumer example: a one-slot task box
+
+A producer puts one task into a box. A consumer takes it. The box can
+hold only one task.
+
+``` java
+public class TaskBox {
+    private String task;
+
+    public synchronized void put(String newTask)
+            throws InterruptedException {
+
+        while (task != null) {
+            wait();
+        }
+
+        task = newTask;
+        System.out.println("Produced: " + newTask);
+        notifyAll();
+    }
+
+    public synchronized String take()
+            throws InterruptedException {
+
+        while (task == null) {
+            wait();
+        }
+
+        String result = task;
+        task = null;
+        System.out.println("Consumed: " + result);
+        notifyAll();
+
+        return result;
+    }
+
+    public static void main(String[] args) {
+        TaskBox box = new TaskBox();
+
+        Thread producer = new Thread(() -> {
+            try {
+                for (int i = 1; i <= 5; i++) {
+                    box.put("Task-" + i);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+
+        Thread consumer = new Thread(() -> {
+            try {
+                for (int i = 1; i <= 5; i++) {
+                    box.take();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+
+        producer.start();
+        consumer.start();
+    }
+}
+```
+
+### Understand the conditions
+
+-   Producer waits while `task != null` because the box is full.
+-   Consumer waits while `task == null` because the box is empty.
+-   After producing, the producer notifies waiting threads.
+-   After consuming, the consumer notifies waiting threads.
+-   Both methods are synchronized, so checking and changing the shared
+    `task` state happen under the same monitor.
+
+For production applications, prefer higher-level concurrency utilities
+instead of manually implementing queues this way.
+
+## 7. `wait()` vs `sleep()`
+
+  -----------------------------------------------------------------------
+  `wait()`                            `Thread.sleep()`
+  ----------------------------------- -----------------------------------
+  Method of `Object`                  Static method of `Thread`
+
+  Must own the target object's        Does not require a monitor
+  monitor                             
+
+  Releases the monitor of the object  Does not release monitors
+  it waits on                         
+
+  Used for thread coordination        Used to pause execution for a time
+
+  Returns after notification,         Resumes after the sleep duration or
+  interruption, or spurious wakeup    interruption
+  and monitor reacquisition           
+  -----------------------------------------------------------------------
+
+Example:
+
+``` java
+synchronized (lock) {
+    Thread.sleep(1000); // Still owns lock while sleeping.
+}
+```
+
+Compare:
+
+``` java
+synchronized (lock) {
+    lock.wait(); // Releases lock's monitor while waiting.
+}
+```
+
+## 8. Common mistakes
+
+1.  Calling `wait()` without owning the object's monitor.
+2.  Calling `notify()` on a different object from the one whose monitor
+    the waiting thread owns.
+3.  Using `if` instead of `while` around `wait()`.
+4.  Assuming `notify()` immediately transfers the monitor to the
+    awakened thread.
+5.  Assuming `notifyAll()` means all awakened threads execute
+    simultaneously.
+6.  Forgetting to handle `InterruptedException`.
+7.  Holding multiple locks while waiting without carefully reasoning
+    about deadlocks.
+
+## 9. How does this relate to the Turf backend?
+
+Imagine a booking worker that needs a task to process.
+
+A simplified in-memory design might have a producer add booking work and
+a consumer wait for it. `wait()` and `notifyAll()` can coordinate those
+threads inside one JVM.
+
+But a real Spring Boot Turf application may run multiple application
+instances:
+
+-   Instance A may receive a booking request.
+-   Instance B may run a background worker.
+-   Instance C may also run workers.
+
+Java monitors are local to one JVM. A `synchronized` block or `wait()`
+call in Instance A cannot coordinate directly with Instance B.
+
+For real backend systems, prefer tools designed for this job:
+
+-   `BlockingQueue` for in-process producer-consumer coordination.
+-   `ExecutorService` for managing worker threads.
+-   A message broker such as RabbitMQ or Kafka for communication across
+    application instances.
+-   Database transactions and constraints for protecting booking data.
+
+For example, do not rely on a Java monitor to prevent two application
+instances from booking the same turf slot. Use database-level
+correctness mechanisms such as unique constraints, transactions, and
+appropriate locking.
+
+## 10. Interview questions and answers
+
+### Q1. What are `wait()`, `notify()`, and `notifyAll()`?
+
+They are `Object` methods used for coordination between threads waiting
+on an object's monitor.
+
+### Q2. Why must `wait()` be called from a synchronized context?
+
+The calling thread must own the target object's monitor. Otherwise Java
+throws `IllegalMonitorStateException`.
+
+### Q3. Does `wait()` release the lock?
+
+It releases the monitor of the object on which `wait()` is called. It
+does not automatically release other monitors the thread owns.
+
+### Q4. Does `sleep()` release a lock?
+
+No. Sleeping does not release monitors.
+
+### Q5. Does `notify()` release the lock immediately?
+
+No. The notifying thread retains the monitor until it exits the
+synchronized region or otherwise releases it.
+
+### Q6. What is the difference between `notify()` and `notifyAll()`?
+
+`notify()` wakes one waiting thread. `notifyAll()` wakes all threads
+waiting on that object's monitor; they then compete to reacquire it.
+
+### Q7. Why should `wait()` be used inside a `while` loop?
+
+Because of spurious wakeups and because the condition may no longer be
+true when the thread reacquires the monitor.
+
+### Q8. What is a spurious wakeup?
+
+A waiting thread may return from `wait()` without the expected
+notification. Code must always re-check the condition.
+
+### Q9. What happens if `wait()` is called without owning the monitor?
+
+Java throws `IllegalMonitorStateException`.
+
+### Q10. Is `wait()` a method of `Thread`?
+
+No. It is a method of `Object`, because waiting is associated with an
+object's monitor.
+
+### Q11. Does `notifyAll()` make all waiting threads run at the same time?
+
+No. They become eligible to compete for the monitor. Only one thread at
+a time can own that monitor.
+
+### Q12. Should a production Spring Boot application usually build its own queue with `wait()` and `notify()`?
+
+Usually not. Prefer higher-level utilities such as `BlockingQueue` and
+`ExecutorService`, or a message broker for distributed work.
+
+## 11. Practice questions
+
+Try these before checking the answers.
+
+1.  What happens if a thread calls `lock.wait()` without entering
+    `synchronized (lock)`?
+
+2.  A thread is inside `synchronized (lock)` and calls
+    `Thread.sleep(5000)`. Can another thread enter a synchronized block
+    using the same `lock` during those five seconds?
+
+3.  A thread calls `lock.wait()`. Does it release every lock it owns?
+
+4.  Why is this unsafe?
+
+    ``` java
+    synchronized (lock) {
+        if (!hasWork) {
+            lock.wait();
+        }
+        processWork();
+    }
+    ```
+
+5.  If Thread A calls `lock.notifyAll()` while holding `lock`, can a
+    waiting Thread B immediately enter a synchronized block using
+    `lock`?
+
+6.  Why is a Java monitor insufficient for coordinating booking workers
+    running in two different Spring Boot instances?
+
+7.  Which would you choose for a production in-process task queue:
+    manually written `wait()`/`notifyAll()` logic or `BlockingQueue`?
+    Why?
+
+### Practice answers
+
+1.  `IllegalMonitorStateException`.
+2.  No. Thread A still owns the monitor while sleeping.
+3.  No. It releases only the monitor of the object on which it called
+    `wait()`.
+4.  A spurious wakeup or another thread changing the condition can make
+    `hasWork` false when execution continues. Use `while`.
+5.  No. Thread A retains the monitor until it exits the synchronized
+    region; B must reacquire it.
+6.  Each JVM has its own monitors. They are not shared across
+    application instances.
+7.  Usually `BlockingQueue`, because it provides a tested higher-level
+    producer-consumer abstraction.
+
+## 12. Key takeaways
+
+-   `wait()` releases the target object's monitor and waits.
+-   `notify()` wakes one waiter; `notifyAll()` wakes all waiters on that
+    monitor.
+-   The notifying thread keeps the monitor until it exits the
+    synchronized region.
+-   Always check the condition in a `while` loop.
+-   `sleep()` does not release monitors.
+-   Use higher-level concurrency utilities in real applications when
+    possible.
+-   JVM-local coordination is not distributed coordination.
