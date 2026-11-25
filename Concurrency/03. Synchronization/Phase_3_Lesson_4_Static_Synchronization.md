@@ -1,0 +1,560 @@
+# Phase 3 --- Lesson 4: Static Synchronization
+
+## 1. What you will learn
+
+By the end of this lesson, you should understand:
+
+-   What `static synchronized` means.
+-   The difference between synchronized instance methods and
+    synchronized static methods.
+-   Which monitor each kind of method locks.
+-   Why two different objects can still block each other when they call
+    the same static synchronized method.
+-   How static synchronization relates to shared class-level state.
+-   Why Java synchronization does not coordinate multiple Spring Boot
+    application instances.
+
+## 2. Quick revision: instance synchronization
+
+``` java
+public class BookingCounter {
+    private int count = 0;
+
+    public synchronized void increment() {
+        count++;
+    }
+}
+```
+
+This is an instance synchronized method. When a thread calls
+`counter.increment()`, Java acquires the intrinsic monitor associated
+with `counter`. In an instance synchronized method, the lock is
+effectively `this`.
+
+Conceptually, this:
+
+``` java
+public synchronized void increment() {
+    count++;
+}
+```
+
+is equivalent to:
+
+``` java
+public void increment() {
+    synchronized (this) {
+        count++;
+    }
+}
+```
+
+The lock belongs to the particular object instance. If you create two
+objects, they have different instance monitors. Locking one does not
+automatically block access to the other.
+
+## 3. What is a static synchronized method?
+
+``` java
+public class GlobalCounter {
+    private static int count = 0;
+
+    public static synchronized void increment() {
+        count++;
+    }
+}
+```
+
+The method is both `static` (it belongs to the class) and `synchronized`
+(a thread must acquire a monitor before entering it).
+
+A static method has no `this` reference. So which object is locked?
+
+For a static synchronized method, Java uses the monitor associated with
+the class's `Class` object. For `GlobalCounter`, that object is
+accessible as:
+
+``` java
+GlobalCounter.class
+```
+
+So this:
+
+``` java
+public static synchronized void increment() {
+    count++;
+}
+```
+
+is conceptually equivalent to:
+
+``` java
+public static void increment() {
+    synchronized (GlobalCounter.class) {
+        count++;
+    }
+}
+```
+
+**Key rule:**
+
+-   Synchronized instance method → locks `this`.
+-   Static synchronized method → locks `ClassName.class`.
+
+The JVM manages the monitor behavior. You do not create a separate lock
+object yourself.
+
+## 4. Runnable experiment: static synchronization
+
+Create `StaticSyncDemo.java`:
+
+``` java
+public class StaticSyncDemo {
+
+    static class SharedCounter {
+        private static int count = 0;
+
+        public static synchronized void increment() {
+            count++;
+        }
+
+        public static int getCount() {
+            return count;
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        Thread t1 = new Thread(() -> {
+            for (int i = 0; i < 100_000; i++) {
+                SharedCounter.increment();
+            }
+        });
+
+        Thread t2 = new Thread(() -> {
+            for (int i = 0; i < 100_000; i++) {
+                SharedCounter.increment();
+            }
+        });
+
+        t1.start();
+        t2.start();
+
+        t1.join();
+        t2.join();
+
+        System.out.println("Expected: 200000");
+        System.out.println("Actual:   " + SharedCounter.getCount());
+    }
+}
+```
+
+Run it:
+
+``` bash
+javac StaticSyncDemo.java
+java StaticSyncDemo
+```
+
+The expected result is `200000`. Both threads call the same static
+method, and both calls use the same class monitor. Only one thread at a
+time can execute the synchronized method for that class.
+
+### Experiment: remove `synchronized`
+
+Change:
+
+``` java
+public static synchronized void increment()
+```
+
+to:
+
+``` java
+public static void increment()
+```
+
+Run the program several times. You may observe a value below `200000`,
+because `count++` is a read-modify-write operation and concurrent
+increments can interfere.
+
+A particular run might still print the expected value. That does not
+prove the code is thread-safe; a race condition does not have to
+reproduce on every run.
+
+## 5. Important experiment: two different objects, one class lock
+
+A common question is: if static methods belong to a class, what happens
+if I call them through two different objects?
+
+Try this:
+
+``` java
+public class StaticLockExperiment {
+
+    static class Worker {
+        public static synchronized void doWork(String name) {
+            System.out.println(name + " entered");
+
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+            System.out.println(name + " leaving");
+        }
+    }
+
+    public static void main(String[] args) {
+        Worker object1 = new Worker();
+        Worker object2 = new Worker();
+
+        Thread t1 = new Thread(() -> object1.doWork("Thread 1"));
+        Thread t2 = new Thread(() -> object2.doWork("Thread 2"));
+
+        t1.start();
+        t2.start();
+    }
+}
+```
+
+Although the calls are written using different object references,
+`doWork` is static. Both calls use the same `Worker.class` monitor. The
+method executions therefore occur one after another, not concurrently.
+
+Java permits calling a static method through an object reference, but it
+is clearer to call it through the class:
+
+``` java
+Worker.doWork("Thread 1");
+```
+
+## 6. Static synchronized and instance synchronized use different locks
+
+``` java
+public class MixedLocks {
+
+    public synchronized void instanceTask() {
+        // Locks this object
+    }
+
+    public static synchronized void staticTask() {
+        // Locks MixedLocks.class
+    }
+}
+```
+
+These methods use different monitors:
+
+  Method             Monitor
+  ------------------ -------------------------------
+  `instanceTask()`   The current instance (`this`)
+  `staticTask()`     `MixedLocks.class`
+
+A thread executing `instanceTask()` on an object does not automatically
+block a thread executing `staticTask()`. They can execute concurrently
+because they do not contend for the same monitor.
+
+### What if both methods must coordinate?
+
+If both methods protect the same shared state, they need a common lock:
+
+``` java
+public class SharedState {
+
+    private static int count = 0;
+
+    public void incrementFromInstance() {
+        synchronized (SharedState.class) {
+            count++;
+        }
+    }
+
+    public static void incrementFromStatic() {
+        synchronized (SharedState.class) {
+            count++;
+        }
+    }
+}
+```
+
+Both methods explicitly acquire the same class monitor.
+
+Do not assume that adding `synchronized` to both an instance method and
+a static method makes them coordinate. Their default monitors differ.
+
+## 7. When should you use static synchronization?
+
+It can make sense when:
+
+1.  The state being protected is shared at class level, such as a
+    mutable `static` field.
+2.  Multiple threads in the same JVM may access or modify that state.
+3.  You need mutual exclusion around the operation.
+4.  Every access that needs coordination follows the same locking
+    strategy.
+
+Example:
+
+``` java
+public class InMemorySequence {
+
+    private static long nextValue = 1;
+
+    public static synchronized long next() {
+        return nextValue++;
+    }
+}
+```
+
+Within one JVM, calls to `next()` are serialized by the class monitor.
+
+However, static mutable state should be used carefully. It can make
+tests interfere with one another, complicate lifecycle management, and
+become a problem when an application runs in multiple processes.
+
+## 8. Turf example: an in-memory booking sequence
+
+Imagine you temporarily keep a booking sequence in memory:
+
+``` java
+public class BookingReferenceGenerator {
+
+    private static long sequence = 1000;
+
+    public static synchronized long nextReference() {
+        return sequence++;
+    }
+}
+```
+
+Multiple request-handling threads in the **same JVM** calling this
+method will not increment the sequence simultaneously.
+
+But consider a deployment with three Spring Boot instances:
+
+``` text
+                  Load Balancer
+                 /      |      \
+                /       |       \
+          App A       App B      App C
+          JVM A       JVM B      JVM C
+          1000        1000       1000
+```
+
+Each application instance has its own JVM and its own copy of the static
+field. Each JVM also has its own class monitor. So `static synchronized`
+does not coordinate App A with App B or App C. You could generate
+duplicate references across instances.
+
+### What should a real Turf backend use?
+
+For a production booking reference or sequence, use a shared system such
+as:
+
+-   A database sequence or identity/auto-increment mechanism.
+-   A database-generated unique identifier.
+-   A carefully designed distributed ID generator, if its requirements
+    justify one.
+
+For actual slot booking, do not rely on a static synchronized method to
+prevent double booking. Use database-level guarantees, such as:
+
+-   A unique constraint representing the slot's booking rule.
+-   A transaction around the booking operation.
+-   Appropriate optimistic or pessimistic locking when needed.
+-   Idempotency for retried booking requests.
+
+The database is shared by all application instances; a Java monitor is
+not.
+
+## 9. Common mistakes
+
+### Mistake 1: Thinking static synchronized locks an instance
+
+It does not. It locks the class's `Class` object.
+
+### Mistake 2: Thinking instance and static synchronized methods block each other
+
+Not by default. They use different monitors.
+
+### Mistake 3: Thinking static synchronized protects a static field from every possible access
+
+It only coordinates code that acquires the same monitor. An
+unsynchronized method that reads or writes the field does not
+automatically acquire that monitor.
+
+### Mistake 4: Thinking it works across multiple Spring Boot instances
+
+It does not. Intrinsic monitors are local to a JVM.
+
+### Mistake 5: Using a class-wide lock for unrelated work
+
+A static synchronized method can serialize all calls to that method for
+the class. If the critical section is large or the method is called
+frequently, it can become a bottleneck.
+
+### Mistake 6: Believing `static` itself makes a field thread-safe
+
+`static` controls where the field belongs; it does not make reads and
+writes atomic or establish thread safety.
+
+## 10. Interview questions
+
+**Q1. Which lock does a static synchronized method acquire?**
+
+The intrinsic monitor associated with the declaring class's `Class`
+object, such as `MyClass.class`.
+
+**Q2. Which lock does an instance synchronized method acquire?**
+
+The monitor associated with the receiver object, equivalent to `this`.
+
+**Q3. Can two different instances block each other when calling the same
+static synchronized method?**
+
+Yes. Both calls acquire the same class monitor.
+
+**Q4. Can a static synchronized method and an instance synchronized
+method execute at the same time?**
+
+Yes, by default. They use different monitors: the class object and the
+instance object.
+
+**Q5. How can a static method synchronize with an instance method?**
+
+They can explicitly synchronize on a common lock, for example
+`synchronized (MyClass.class)`, provided both use that same lock
+consistently.
+
+**Q6. Does static synchronized protect a static variable if another
+method accesses it without synchronization?**
+
+No. The other method does not automatically acquire the class monitor.
+
+**Q7. Does static synchronized coordinate multiple Spring Boot
+instances?**
+
+No. Each JVM has its own class object, monitor, and static fields.
+
+**Q8. Is `MyClass.class` an ordinary object?**
+
+Yes. It is a `Class` object representing the class, and it can be used
+as an intrinsic monitor.
+
+**Q9. Is static synchronization always the best choice for static
+fields?**
+
+No. Depending on the operation, atomics, explicit locks, concurrent data
+structures, or database-level coordination may be more appropriate.
+
+**Q10. Can you call a static synchronized method using an instance
+reference?**
+
+Java permits it, but calling it through the class name is clearer. The
+lock is still the class monitor.
+
+## 11. Practice exercises
+
+Try these before looking for solutions.
+
+### Exercise 1 --- Predict the lock
+
+For each method, identify the monitor it uses:
+
+``` java
+class Example {
+    public synchronized void a() {}
+    public static synchronized void b() {}
+    public void c() {
+        synchronized (this) {}
+    }
+    public static void d() {
+        synchronized (Example.class) {}
+    }
+}
+```
+
+### Exercise 2 --- Do they block?
+
+There are two objects:
+
+``` java
+Example first = new Example();
+Example second = new Example();
+```
+
+Thread 1 calls `first.a()`. Thread 2 calls `second.a()`.
+
+Will they block each other because of synchronization? Explain.
+
+### Exercise 3 --- Do they block?
+
+Thread 1 calls `first.b()`. Thread 2 calls `second.b()`.
+
+Will they block each other? Explain why this differs from Exercise 2.
+
+### Exercise 4 --- Find the bug
+
+``` java
+class TicketCounter {
+    private static int tickets = 0;
+
+    public static synchronized void sellOne() {
+        tickets++;
+    }
+
+    public static int getTickets() {
+        return tickets;
+    }
+}
+```
+
+Is every access to `tickets` coordinated by the class monitor? What
+would you change if you need reads to use the same synchronization
+discipline?
+
+### Exercise 5 --- Turf system design
+
+Your Turf platform runs four Spring Boot instances. Each instance uses
+this class:
+
+``` java
+class SlotAllocator {
+    private static int nextSlotNumber = 1;
+
+    public static synchronized int next() {
+        return nextSlotNumber++;
+    }
+}
+```
+
+Explain why this is not a globally unique sequence generator. Suggest a
+shared solution.
+
+### Exercise 6 --- Design a shared lock
+
+You have one static field accessed from both a static method and an
+instance method. Write both methods so they coordinate using the same
+monitor.
+
+## 12. Lesson summary
+
+Remember these four rules:
+
+1.  `synchronized` instance method → monitor of `this`.
+2.  `static synchronized` method → monitor of `ClassName.class`.
+3.  Static and instance synchronized methods do not automatically block
+    each other.
+4.  Java monitors coordinate threads inside one JVM, not separate Spring
+    Boot instances.
+
+**The central idea:** choose the same monitor for every code path that
+must coordinate access to the same shared state.
+
+## Next lesson
+
+**Phase 3 --- Lesson 5: `volatile`**
+
+We will study visibility between threads, why `volatile` is not the same
+as `synchronized`, and when it is useful in backend applications.
