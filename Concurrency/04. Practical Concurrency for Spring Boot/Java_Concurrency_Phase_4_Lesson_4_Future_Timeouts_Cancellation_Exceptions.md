@@ -1,0 +1,1499 @@
+<br>
+
+# Practical Concurrency for Spring Boot - Phase 4, Lesson 4 : Future - Timeouts, Cancellation and Exceptions
+
+<br>
+
+<br>
+
+## 1. What You Will Learn
+
+In Lesson 3, you learned the basic idea of `Callable` and `Future`.
+
+Let's quickly remember:
+
+- `Callable` represents a task that can return a result.
+- `ExecutorService.submit()` submits the task to an executor.
+- `Future` represents the result that the task will produce.
+- `Future.get()` retrieves the result.
+- If the task is not finished, `get()` makes the calling thread wait.
+
+In this lesson, we will go deeper into three situations that happen in real applications:
+
+1. **The task takes too long.** How long should we wait?
+2. **We no longer need the task.** Can we cancel it?
+3. **The task fails.** How do we detect the failure and handle it properly?
+
+These situations matter in your Turf Booking System.
+
+For example:
+
+- A booking page is waiting for a price calculation.
+- A service call is taking too long.
+- A user cancels an operation.
+- A background task fails while generating an invoice.
+- A worker is interrupted while the application is shutting down.
+
+We will start with simple examples and build up to Spring Boot and Turf scenarios.
+
+<br>
+
+## 2. A Quick Review: What Does Future Give Us?
+
+When you submit a `Callable`, you receive a `Future`.
+
+```java
+ExecutorService executor = Executors.newFixedThreadPool(2);
+
+Callable<String> task = () -> {
+    Thread.sleep(2000);
+    return "Booking price calculated";
+};
+
+Future<String> future = executor.submit(task);
+```
+
+At this point:
+
+- The task has been submitted.
+- An executor worker will run it.
+- The task needs about two seconds to finish.
+- `future` is our reference to its eventual result.
+
+We can retrieve the result:
+
+```java
+String result = future.get();
+```
+
+But `get()` waits if the task is not finished.
+
+This creates an important question:
+
+**What if we do not want to wait forever?**
+
+That brings us to timeouts.
+
+<br>
+
+## 3. What Is a Timeout?
+
+A timeout is a limit on how long we are willing to wait for something.
+
+For example, suppose your application asks another service for information.
+
+You may decide:
+
+"I am willing to wait up to two seconds. If there is no answer by then, I will stop waiting and handle the situation."
+
+With a Future, you can do this:
+
+```java
+future.get(2, TimeUnit.SECONDS);
+```
+
+This means:
+
+- Wait for the result.
+- Wait for no more than two seconds.
+- If the result is not ready in time, throw `TimeoutException`.
+
+<br>
+
+### 3.1 A simple timeout example
+
+```java
+ExecutorService executor = Executors.newFixedThreadPool(2);
+
+Callable<String> task = () -> {
+    Thread.sleep(5000);
+    return "Task completed";
+};
+
+Future<String> future = executor.submit(task);
+
+try {
+    String result = future.get(2, TimeUnit.SECONDS);
+    System.out.println(result);
+
+} catch (TimeoutException e) {
+    System.out.println("We waited for two seconds, but the task is not ready.");
+
+} catch (ExecutionException e) {
+    System.out.println("The task failed.");
+
+} catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+
+} finally {
+    executor.shutdown();
+}
+```
+
+The task sleeps for five seconds.
+
+But `get(2, TimeUnit.SECONDS)` waits for only two seconds.
+
+So the likely output is:
+
+```text
+We waited for two seconds, but the task is not ready.
+```
+
+The task may still be running after this message.
+
+That last sentence is very important.
+
+<br>
+
+## 4. A Timeout Does Not Automatically Stop the Task
+
+This is one of the most common misunderstandings about Future.
+
+Look at this line:
+
+```java
+future.get(2, TimeUnit.SECONDS);
+```
+
+It limits how long the calling thread waits.
+
+It does **not** automatically stop the worker thread.
+
+Let's understand what happens.
+
+Suppose:
+
+- The task needs five seconds to finish.
+- The calling thread waits for two seconds.
+- The two-second limit expires.
+
+The sequence is:
+
+```text
+Calling thread                     Worker thread
+      |                                  |
+      | submit(task)                     |
+      |--------------------------------->|
+      |                                  | task starts
+      | get(2 seconds)                   |
+      |                                  | working...
+      | waits                            | working...
+      |                                  |
+      | TimeoutException                 | still working...
+      |                                  | working...
+      |                                  | task completes
+```
+
+The caller stops waiting, but the task may continue.
+
+<br>
+
+### 4.1 Why is this important?
+
+Imagine a booking price service takes too long.
+
+Your controller waits for two seconds and receives a timeout.
+
+If you do nothing else, the worker may continue using resources even though the request no longer needs its result.
+
+Sometimes that is acceptable.
+
+For example, the task may be useful for another operation.
+
+But sometimes you should request cancellation.
+
+<br>
+
+### 4.2 Timeout and cancellation are different
+
+| Timeout | Cancellation |
+|---|---|
+| Limits how long the caller waits | Requests that the task stop |
+| Does not automatically stop the task | Attempts to stop the task |
+| Uses timed `get()` | Uses `cancel()` |
+| Throws `TimeoutException` when time expires | A successful cancellation makes the Future cancelled |
+
+Remember:
+
+**Timeout means "I will not wait any longer."**
+
+**Cancellation means "Please stop this task."**
+
+<br>
+
+## 5. What Is Cancellation?
+
+Cancellation means you no longer want a submitted task to continue.
+
+A Future provides this method:
+
+```java
+future.cancel(true);
+```
+
+It attempts to cancel the task.
+
+The method accepts a boolean argument:
+
+- `cancel(false)`
+- `cancel(true)`
+
+Let's understand the difference.
+
+<br>
+
+### 5.1 cancel(false)
+
+```java
+future.cancel(false);
+```
+
+This attempts to cancel the task without interrupting it if it is already running.
+
+If the task has not started yet, it can be prevented from starting.
+
+If it is already running, it may continue running.
+
+<br>
+
+### 5.2 cancel(true)
+
+```java
+future.cancel(true);
+```
+
+This attempts to cancel the task and requests interruption if it is already running.
+
+This is generally the option to consider when you want a running task to stop.
+
+But there is an important limitation:
+
+**Java does not forcibly kill a running thread when you call `cancel(true)`.**
+
+It sends an interruption request.
+
+The task must respond to that request.
+
+We will look at that next.
+
+<br>
+
+## 6. What Is Interruption?
+
+Interruption is Java's way of asking a thread to stop what it is doing or respond to a cancellation request.
+
+It is a cooperative mechanism.
+
+That means:
+
+- One part of the application requests interruption.
+- The running thread receives the request.
+- The task should notice the request.
+- The task should stop its work safely when appropriate.
+
+Java does not safely force a thread to stop at an arbitrary line of code.
+
+<br>
+
+### 6.1 Requesting interruption
+
+When you call:
+
+```java
+future.cancel(true);
+```
+
+the Future attempts to interrupt the worker thread if the task is already running.
+
+The worker thread can detect its interrupt status:
+
+```java
+Thread.currentThread().isInterrupted()
+```
+
+This returns:
+
+- `true` if the thread has been interrupted.
+- `false` if it has not.
+
+Example:
+
+```java
+Callable<String> task = () -> {
+
+    while (true) {
+
+        if (Thread.currentThread().isInterrupted()) {
+            System.out.println("Interruption noticed");
+            return "Stopped";
+        }
+
+        // Do one small piece of work
+    }
+};
+```
+
+This task checks for interruption repeatedly.
+
+When it notices the interruption request, it exits by returning `"Stopped"`.
+
+<br>
+
+### 6.2 Why check interruption regularly?
+
+Imagine a task processes 100,000 records.
+
+If it checks for interruption only after processing all records, cancellation may take a long time to take effect.
+
+Instead, it can check between smaller pieces of work:
+
+```java
+for (int i = 0; i < 100_000; i++) {
+
+    if (Thread.currentThread().isInterrupted()) {
+        return;
+    }
+
+    processRecord(i);
+}
+```
+
+This gives the task opportunities to respond to cancellation.
+
+Do not add interruption checks blindly to every tiny method. Use them in long-running work where cancellation is meaningful.
+
+<br>
+
+## 7. What Happens When an Interrupted Thread Is Sleeping?
+
+Some methods respond to interruption by throwing `InterruptedException`.
+
+One common example is:
+
+```java
+Thread.sleep(1000);
+```
+
+If another thread interrupts a thread while it is sleeping, `sleep()` throws `InterruptedException`.
+
+Example:
+
+```java
+Callable<String> task = () -> {
+
+    try {
+        System.out.println("Task started");
+
+        Thread.sleep(10_000);
+
+        return "Completed";
+
+    } catch (InterruptedException e) {
+        System.out.println("Task was interrupted");
+        return "Stopped";
+    }
+};
+```
+
+If the Future is cancelled with:
+
+```java
+future.cancel(true);
+```
+
+the worker may be interrupted while sleeping.
+
+Then `Thread.sleep()` throws `InterruptedException`.
+
+The catch block runs.
+
+<br>
+
+### 7.1 Important: InterruptedException clears the interrupt status
+
+When a method throws `InterruptedException`, the thread's interrupt status is cleared.
+
+That means this:
+
+```java
+catch (InterruptedException e) {
+    System.out.println(Thread.currentThread().isInterrupted());
+}
+```
+
+will normally print:
+
+```text
+false
+```
+
+The interruption caused the exception, but the interrupt status has been cleared.
+
+If you catch the exception and cannot propagate it, a common practice is to restore the interrupt status:
+
+```java
+catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+}
+```
+
+This tells the code higher up that interruption was requested.
+
+<br>
+
+### 7.2 Should you return a normal result after interruption?
+
+It depends on the task.
+
+If interruption means the operation must stop, do not pretend it completed successfully.
+
+For example, avoid returning `"Completed"` when the work was actually stopped halfway through.
+
+You can:
+
+- Restore the interrupt status and exit.
+- Propagate `InterruptedException` if the method allows it.
+- Return a clearly defined cancellation or incomplete result if that is part of your design.
+
+The important thing is not to silently ignore the interruption and continue as if nothing happened.
+
+<br>
+
+## 8. A Complete Cancellation Example
+
+Let's put the ideas together.
+
+We will create a task that performs ten steps.
+
+Each step takes one second.
+
+After about three seconds, the main thread will request cancellation.
+
+```java
+import java.util.concurrent.*;
+
+public class Main {
+
+    public static void main(String[] args)
+            throws InterruptedException {
+
+        ExecutorService executor =
+                Executors.newSingleThreadExecutor();
+
+        Callable<String> task = () -> {
+
+            try {
+                for (int i = 1; i <= 10; i++) {
+
+                    System.out.println("Processing step " + i);
+
+                    Thread.sleep(1000);
+                }
+
+                return "All steps completed";
+
+            } catch (InterruptedException e) {
+
+                System.out.println("Task received interruption");
+
+                Thread.currentThread().interrupt();
+
+                return "Task stopped";
+            }
+        };
+
+        Future<String> future = executor.submit(task);
+
+        Thread.sleep(3000);
+
+        boolean cancelled = future.cancel(true);
+
+        System.out.println("Cancellation accepted: " + cancelled);
+
+        System.out.println("Is cancelled: " + future.isCancelled());
+
+        executor.shutdown();
+    }
+}
+```
+
+Possible output:
+
+```text
+Processing step 1
+Processing step 2
+Processing step 3
+Task received interruption
+Cancellation accepted: true
+Is cancelled: true
+```
+
+The exact timing and output order can vary.
+
+<br>
+
+### 8.1 What happened?
+
+1. We created a single-thread executor.
+2. We submitted the Callable.
+3. The worker started processing steps.
+4. The main thread waited for three seconds.
+5. The main thread called `future.cancel(true)`.
+6. The worker was interrupted.
+7. Its `Thread.sleep()` threw `InterruptedException`.
+8. The task handled the interruption and stopped.
+9. The Future became cancelled.
+
+<br>
+
+### 8.2 Why not call get() after cancellation?
+
+After a Future has been successfully cancelled:
+
+```java
+future.get();
+```
+
+throws `CancellationException`.
+
+There is no normal result to retrieve.
+
+You can check cancellation using:
+
+```java
+future.isCancelled();
+```
+
+And remember:
+
+```java
+future.isDone();
+```
+
+also returns `true` for a cancelled task.
+
+<br>
+
+## 9. Understanding the Four Important Future States
+
+For this lesson, it helps to distinguish these outcomes.
+
+| Situation | `isDone()` | `isCancelled()` | What happens to `get()` |
+|---|---:|---:|---|
+| Task completed successfully | `true` | `false` | Returns the result |
+| Task failed | `true` | `false` | Throws `ExecutionException` |
+| Task was cancelled | `true` | `true` | Throws `CancellationException` |
+| Task is still running | `false` | `false` | Waits, or times out with timed `get()` |
+
+This table is useful because `isDone()` does not mean that the task succeeded.
+
+It only means the task reached a finished state.
+
+A task can finish successfully, fail, or be cancelled.
+
+<br>
+
+## 10. Handling Exceptions From Callable
+
+Now let's focus on task failures.
+
+Suppose a Callable performs a calculation:
+
+```java
+Callable<Integer> task = () -> {
+    int total = 1000;
+    int players = 0;
+
+    return total / players;
+};
+```
+
+This causes `ArithmeticException` because division by zero is not allowed.
+
+When you submit this task using:
+
+```java
+Future<Integer> future = executor.submit(task);
+```
+
+the exception does not normally appear directly on the thread that called `submit()`.
+
+The task runs on a worker thread.
+
+The Future stores the failed outcome.
+
+When you call:
+
+```java
+future.get();
+```
+
+the failure is reported through `ExecutionException`.
+
+<br>
+
+### 10.1 A complete exception-handling example
+
+```java
+ExecutorService executor =
+        Executors.newFixedThreadPool(2);
+
+Callable<Integer> task = () -> {
+    int total = 1000;
+    int players = 0;
+
+    return total / players;
+};
+
+Future<Integer> future = executor.submit(task);
+
+try {
+
+    Integer result = future.get();
+
+    System.out.println("Result: " + result);
+
+} catch (ExecutionException e) {
+
+    Throwable originalError = e.getCause();
+
+    System.out.println("Task failed");
+    System.out.println("Reason: " + originalError);
+
+} catch (InterruptedException e) {
+
+    Thread.currentThread().interrupt();
+
+} finally {
+
+    executor.shutdown();
+}
+```
+
+<br>
+
+### 10.2 Why do we use getCause()?
+
+The exception thrown by `get()` is `ExecutionException`.
+
+But that is not necessarily the original problem.
+
+The original task may have thrown:
+
+- `ArithmeticException`
+- `IllegalArgumentException`
+- `IllegalStateException`
+- A checked exception from a file or network operation
+
+You can inspect the original failure using:
+
+```java
+e.getCause();
+```
+
+For example, in our division example, the cause is `ArithmeticException`.
+
+<br>
+
+### 10.3 Should you catch every exception and ignore it?
+
+No.
+
+This is a bad approach:
+
+```java
+try {
+    future.get();
+} catch (Exception e) {
+    // Ignore
+}
+```
+
+It hides failures.
+
+Your application may continue as if the task succeeded, even though it failed.
+
+Instead:
+
+- Log useful information.
+- Handle expected failures.
+- Propagate failures when the caller needs to know.
+- Decide whether retrying is safe.
+- Avoid exposing internal exception details directly to users.
+
+<br>
+
+## 11. The Four Exceptions You Should Understand
+
+Let's summarize the exceptions you are most likely to see when using `Future.get()`.
+
+<br>
+
+### 11.1 ExecutionException
+
+**Meaning:** The task ran but failed.
+
+Example:
+
+```java
+catch (ExecutionException e) {
+    Throwable cause = e.getCause();
+}
+```
+
+Use `getCause()` to inspect the original failure.
+
+<br>
+
+### 11.2 InterruptedException
+
+**Meaning:** The thread waiting for the result was interrupted.
+
+Example:
+
+```java
+catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+}
+```
+
+Do not silently ignore it.
+
+<br>
+
+### 11.3 TimeoutException
+
+**Meaning:** A timed `get()` did not receive a result before its time limit.
+
+Example:
+
+```java
+future.get(2, TimeUnit.SECONDS);
+```
+
+The task may still be running.
+
+<br>
+
+### 11.4 CancellationException
+
+**Meaning:** The Future was cancelled, so there is no normal result to retrieve.
+
+Example:
+
+```java
+try {
+    future.get();
+} catch (CancellationException e) {
+    System.out.println("The task was cancelled");
+}
+```
+
+<br>
+
+### 11.5 Quick comparison
+
+| Exception | What happened? |
+|---|---|
+| `ExecutionException` | The task failed |
+| `InterruptedException` | The waiting thread was interrupted |
+| `TimeoutException` | The allowed waiting time expired |
+| `CancellationException` | The task was cancelled |
+
+<br>
+
+## 12. What If the Task Fails Before You Call get()?
+
+This is another useful detail.
+
+Look at this:
+
+```java
+Future<Integer> future = executor.submit(() -> {
+    throw new IllegalStateException("Price data is invalid");
+});
+```
+
+The task may fail immediately.
+
+But if you do not call:
+
+```java
+future.get();
+```
+
+you may not observe the exception through the Future.
+
+The failure is stored in the Future.
+
+When you eventually call `get()`, it throws `ExecutionException`.
+
+Example:
+
+```java
+try {
+    Integer result = future.get();
+
+} catch (ExecutionException e) {
+    System.out.println("Task failed: " + e.getCause());
+}
+```
+
+This is one reason you should not submit important tasks and then completely forget about their outcomes.
+
+If the result or failure matters, make sure your application has a way to observe it.
+
+<br>
+
+## 13. What If the Task Is Cancelled Before It Starts?
+
+A task may be waiting in the executor's queue.
+
+It has been submitted, but no worker has started executing it yet.
+
+If you cancel it before execution begins, the executor can prevent it from running.
+
+Example:
+
+```java
+ExecutorService executor =
+        Executors.newSingleThreadExecutor();
+
+Future<?> first = executor.submit(() -> {
+    try {
+        Thread.sleep(5000);
+    } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+    }
+});
+
+Future<?> second = executor.submit(() -> {
+    System.out.println("Second task started");
+});
+
+second.cancel(false);
+
+executor.shutdown();
+```
+
+The first task occupies the only worker for about five seconds.
+
+The second task waits in the queue.
+
+If cancellation succeeds before the second task starts, it will not execute.
+
+This is useful when queued work is no longer needed.
+
+But remember: cancellation is not a substitute for application-level business rules.
+
+<br>
+
+## 14. Choosing a Timeout for Real Applications
+
+A timeout should not be an arbitrary number.
+
+You should choose it based on what the operation does and how long the caller can reasonably wait.
+
+For example:
+
+- A simple calculation should usually finish very quickly.
+- A database operation may need a carefully chosen query timeout.
+- An external payment provider may have its own response-time expectations.
+- A report-generation task may take longer and may be better handled as a background job.
+
+<br>
+
+### 14.1 A timeout is not the same as a total request deadline
+
+Suppose a request performs three operations:
+
+1. Fetch venue information.
+2. Calculate pricing.
+3. Retrieve availability.
+
+If each operation gets a separate two-second timeout, the entire request could take more than two seconds.
+
+A two-second timeout on each operation does not automatically create a two-second total request limit.
+
+For a real request, you may need an overall deadline and pass the remaining time to each operation.
+
+We will study more advanced asynchronous composition and timeout patterns when we reach `CompletableFuture`.
+
+<br>
+
+### 14.2 Avoid excessively long waits
+
+If a request thread waits for a worker for a very long time, it remains occupied.
+
+Under heavy traffic, many waiting request threads can reduce the application's ability to serve other requests.
+
+Timeouts help limit waiting, but they must be combined with sensible resource limits and failure handling.
+
+<br>
+
+## 15. Practical Turf Booking Scenarios
+
+Let's apply the lesson to your project.
+
+<br>
+
+### Scenario 1: A price calculation is taking too long
+
+Your booking page requests a price calculation.
+
+The calculation runs on a worker thread.
+
+The request waits for up to two seconds:
+
+```java
+try {
+    BigDecimal price = future.get(2, TimeUnit.SECONDS);
+
+} catch (TimeoutException e) {
+    // Decide how to respond when the result is late
+}
+```
+
+What should happen after a timeout?
+
+That is a product and system-design decision.
+
+Possible choices:
+
+- Return a clear temporary error.
+- Ask the client to retry.
+- Continue the calculation if it is useful elsewhere.
+- Request cancellation if the result is no longer needed.
+
+Do not automatically show an incorrect or guessed price.
+
+<br>
+
+### Scenario 2: A user cancels a report request
+
+Suppose an admin requests a large booking report.
+
+The report is being generated in a worker thread.
+
+If the user cancels the request and the report is no longer useful, the application may request cancellation:
+
+```java
+future.cancel(true);
+```
+
+The report-generation code must respond to interruption if it should stop promptly.
+
+For a report that takes several minutes, it is better to design cancellation points between batches of records rather than expect Java to forcibly stop it.
+
+<br>
+
+### Scenario 3: An invoice-generation task fails
+
+Suppose a background task generates an invoice.
+
+If the task fails, the application should not silently mark the invoice as generated.
+
+It should:
+
+- Record or log the failure.
+- Keep the business state accurate.
+- Decide whether a retry is safe.
+- Avoid creating duplicate invoices during retries.
+
+A Future can report the failure to the code that calls `get()`, but it does not provide durable retry handling by itself.
+
+<br>
+
+### Scenario 4: A payment request times out
+
+A payment request is especially sensitive.
+
+A timeout does not prove that the payment failed.
+
+The payment provider may have processed the payment but its response may not have reached your application in time.
+
+Therefore:
+
+- Do not assume timeout means payment failure.
+- Do not blindly create a second payment attempt.
+- Use the payment provider's idempotency support where available.
+- Reconcile the payment status with the provider.
+- Keep your own payment state transitions consistent.
+
+This is a critical distinction for your Turf project.
+
+**A timeout tells you that you did not receive a response in time. It does not always tell you what happened on the other system.**
+
+<br>
+
+## 16. Common Mistakes
+
+<br>
+
+### Mistake 1: Thinking timed get() stops the task
+
+```java
+future.get(2, TimeUnit.SECONDS);
+```
+
+This limits the caller's waiting time.
+
+The worker may continue running.
+
+<br>
+
+### Mistake 2: Calling cancel(true) and assuming the thread is dead
+
+`cancel(true)` requests interruption.
+
+The task must respond to interruption.
+
+<br>
+
+### Mistake 3: Ignoring InterruptedException
+
+Bad:
+
+```java
+catch (InterruptedException e) {
+    // Ignore
+}
+```
+
+Better:
+
+```java
+catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+}
+```
+
+<br>
+
+### Mistake 4: Treating isDone() as success
+
+A failed or cancelled task is also done.
+
+Check the outcome by retrieving the result or handling the relevant exception.
+
+<br>
+
+### Mistake 5: Ignoring ExecutionException
+
+A task can fail on a worker thread.
+
+When you call `get()`, inspect `ExecutionException` and its cause.
+
+<br>
+
+### Mistake 6: Assuming timeout means a payment failed
+
+A remote system may have completed the operation even though your application did not receive its response.
+
+Reconcile the result instead of blindly repeating a payment.
+
+<br>
+
+### Mistake 7: Retrying every failed task automatically
+
+Some operations are safe to retry; others can create duplicate effects.
+
+Before retrying, understand whether the operation is idempotent and how duplicate requests are handled.
+
+<br>
+
+### Mistake 8: Using cancellation to undo completed business operations
+
+Cancelling a Future does not roll back a database transaction or reverse a payment that has already happened.
+
+Cancellation is about task execution, not business compensation.
+
+<br>
+
+### Mistake 9: Giving every operation an arbitrary timeout
+
+Choose timeouts based on the operation, user experience, and system capacity.
+
+<br>
+
+### Mistake 10: Forgetting to shut down an executor you own
+
+If your application creates an executor directly, its lifecycle must be managed.
+
+In Spring Boot, prefer a Spring-managed executor so its lifecycle can be handled by Spring.
+
+<br>
+
+## 17. Interview Questions and Answers
+
+<br>
+
+### Q1. What is the difference between get() and get(timeout, unit)?
+
+`get()` waits until the task completes.
+
+`get(timeout, unit)` waits only for the specified duration and throws `TimeoutException` if the result is not ready.
+
+<br>
+
+### Q2. Does TimeoutException stop the task?
+
+No. It only means the caller stopped waiting. The task may continue running.
+
+<br>
+
+### Q3. How do you request cancellation of a Future?
+
+Call:
+
+```java
+future.cancel(true);
+```
+
+This attempts cancellation and requests interruption if the task is running.
+
+<br>
+
+### Q4. What is the difference between cancel(true) and cancel(false)?
+
+`cancel(true)` requests interruption of a running task.
+
+`cancel(false)` does not request interruption of a running task.
+
+Both attempt to cancel work that has not started.
+
+<br>
+
+### Q5. Does Java forcibly kill a thread when cancel(true) is called?
+
+No. It requests interruption. The task should cooperate and stop safely.
+
+<br>
+
+### Q6. How can a task check whether it has been interrupted?
+
+Use:
+
+```java
+Thread.currentThread().isInterrupted();
+```
+
+<br>
+
+### Q7. What happens when a sleeping thread is interrupted?
+
+`Thread.sleep()` throws `InterruptedException`.
+
+<br>
+
+### Q8. Why should InterruptedException not be ignored?
+
+Because it communicates an interruption request. Ignoring it can prevent cancellation or shutdown from working correctly.
+
+<br>
+
+### Q9. What does ExecutionException mean?
+
+It means the submitted task failed. The original exception is available through `getCause()`.
+
+<br>
+
+### Q10. Does isDone() mean the task succeeded?
+
+No. It means the task completed, failed, or was cancelled.
+
+<br>
+
+### Q11. What does get() do after successful cancellation?
+
+It throws `CancellationException`.
+
+<br>
+
+### Q12. Can a timeout prove that a payment failed?
+
+No. The remote payment system may have processed the payment even though the response was delayed or lost.
+
+<br>
+
+### Q13. Does Future provide automatic retries?
+
+No. Future reports the outcome of one submitted task. Retry behavior must be designed by the application.
+
+<br>
+
+### Q14. Does cancelling a Future roll back a database transaction?
+
+No. Future cancellation does not automatically roll back a transaction or reverse an external side effect.
+
+<br>
+
+## 18. Practice Questions With Answers
+
+<br>
+
+### Practice 1: Add a timeout
+
+**Question:** You have a Future named `future`. Write code to wait for at most three seconds.
+
+**Answer:**
+
+```java
+String result = future.get(3, TimeUnit.SECONDS);
+```
+
+Remember to handle `TimeoutException`, `ExecutionException`, and `InterruptedException`.
+
+<br>
+
+### Practice 2: Does the task stop?
+
+**Question:** A task takes five seconds. You call:
+
+```java
+future.get(1, TimeUnit.SECONDS);
+```
+
+After one second, `TimeoutException` is thrown. Has the task necessarily stopped?
+
+**Answer:**
+
+No. The calling thread stopped waiting. The worker task may continue running.
+
+<br>
+
+### Practice 3: Request cancellation
+
+**Question:** Write the code to request cancellation and interruption of a task.
+
+**Answer:**
+
+```java
+future.cancel(true);
+```
+
+<br>
+
+### Practice 4: Check interruption
+
+**Question:** Write the code a worker can use to check whether it has been interrupted.
+
+**Answer:**
+
+```java
+Thread.currentThread().isInterrupted();
+```
+
+<br>
+
+### Practice 5: Handle InterruptedException
+
+**Question:** What should you commonly do if you catch `InterruptedException` and cannot propagate it?
+
+**Answer:**
+
+```java
+catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+}
+```
+
+<br>
+
+### Practice 6: Understand task failure
+
+**Question:** A Callable throws `IllegalArgumentException`. What does `future.get()` throw?
+
+**Answer:**
+
+It throws `ExecutionException`. The original `IllegalArgumentException` is available through:
+
+```java
+e.getCause();
+```
+
+<br>
+
+### Practice 7: Understand isDone()
+
+**Question:** A Future returns `true` from `isDone()`. Does that prove the task succeeded?
+
+**Answer:**
+
+No. It may have succeeded, failed, or been cancelled.
+
+<br>
+
+### Practice 8: Understand cancellation
+
+**Question:** After a Future has been successfully cancelled, what happens when you call `get()`?
+
+**Answer:**
+
+It throws `CancellationException`.
+
+<br>
+
+### Practice 9: Payment timeout
+
+**Question:** Your payment request times out after three seconds. Should you immediately assume the payment failed and send another payment request?
+
+**Answer:**
+
+No. The provider may have processed the payment but failed to return a response in time. Check the payment status and use idempotency and reconciliation mechanisms before retrying.
+
+<br>
+
+### Practice 10: Should you cancel?
+
+**Question:** A report task is still running, but the user has cancelled the report request. What can your application do?
+
+**Answer:**
+
+It can request cancellation with `future.cancel(true)`. The report task should check for interruption or handle interruptible operations so it can stop safely.
+
+<br>
+
+## 19. System Design Questions for Your Turf Project
+
+<br>
+
+### Question 1: A booking price calculation takes longer than the HTTP request's allowed wait. What should happen?
+
+**Answer:**
+
+The application should follow a deliberate timeout policy.
+
+It may return a clear temporary error or provide a way to request the result again.
+
+It should not invent a price or assume the calculation succeeded.
+
+For a simple price calculation, first check whether it needs a separate thread at all.
+
+<br>
+
+### Question 2: A customer cancels a booking request while a background task is running. Should you cancel the Future?
+
+**Answer:**
+
+It depends on what the task is doing.
+
+If it is only calculating information that is no longer needed, cancellation may be appropriate.
+
+If it has already started an important business operation, such as contacting a payment provider, cancellation may not undo that operation.
+
+Business cancellation and thread cancellation are different concepts.
+
+<br>
+
+### Question 3: A payment provider request times out. What should the application do?
+
+**Answer:**
+
+Do not assume payment failure.
+
+Use the provider's supported idempotency mechanism and status-check or reconciliation process.
+
+Keep the payment state in your database accurate and avoid duplicate charges.
+
+<br>
+
+### Question 4: An invoice task fails. Should you retry it?
+
+**Answer:**
+
+Possibly, but first determine why it failed and whether retrying can create duplicates.
+
+Use stable invoice identifiers, appropriate uniqueness rules, and retry tracking.
+
+A Future alone does not provide durable retry handling.
+
+<br>
+
+### Question 5: The Spring Boot application is shutting down while a task is running. What should happen?
+
+**Answer:**
+
+The application should manage executor shutdown deliberately.
+
+It should stop accepting new work, allow important tasks to finish within a reasonable period where appropriate, and use interruption for tasks that need to stop.
+
+Tasks should respond correctly to interruption.
+
+For important work that must survive process shutdown, use durable job processing rather than relying only on in-memory Futures.
+
+<br>
+
+### Question 6: Can you cancel a task to undo a booking that was already committed?
+
+**Answer:**
+
+No.
+
+Cancelling a Future does not reverse a committed database transaction.
+
+If a booking must be cancelled, implement a separate business operation that changes the booking state under the correct transaction and concurrency rules.
+
+<br>
+
+## 20. Lesson Checklist
+
+Before moving to the next lesson, make sure you can explain these points:
+
+- [ ] What a timeout means.
+- [ ] How to use `get(timeout, unit)`.
+- [ ] Why a timeout does not automatically stop the task.
+- [ ] The difference between timeout and cancellation.
+- [ ] What `cancel(false)` does.
+- [ ] What `cancel(true)` does.
+- [ ] What interruption means.
+- [ ] How a task checks its interrupt status.
+- [ ] Why `Thread.sleep()` can throw `InterruptedException`.
+- [ ] Why catching `InterruptedException` clears the interrupt status.
+- [ ] Why restoring the interrupt status can be important.
+- [ ] What happens when `get()` is called on a cancelled Future.
+- [ ] What `ExecutionException` means.
+- [ ] How to inspect the original task failure.
+- [ ] Why `isDone()` does not prove success.
+- [ ] Why a payment timeout does not prove payment failure.
+- [ ] Why cancellation does not roll back a database transaction.
+- [ ] Why Future does not provide durable retries.
+
+<br>
+
+## 21. Key Takeaways
+
+1. `Future.get()` waits for a task's result.
+2. `get(timeout, unit)` limits how long the caller waits.
+3. A timeout does not automatically stop the worker task.
+4. `cancel(true)` requests cancellation and interruption.
+5. Interruption is cooperative; Java does not forcibly kill the worker thread.
+6. Tasks should respond to interruption when they support cancellation.
+7. `InterruptedException` should not be silently ignored.
+8. `ExecutionException` reports a failure from the submitted task.
+9. `CancellationException` is thrown when retrieving the result of a cancelled Future.
+10. `isDone()` means the task reached a finished state, not necessarily that it succeeded.
+11. A timeout from an external payment provider does not prove the payment failed.
+12. Future cancellation does not undo database changes or external side effects.
+13. Future does not provide persistent storage or automatic retries.
+
+**Remember these three differences:**
+
+- Timeout: stop waiting.
+- Cancellation: request that the task stop.
+- Exception: understand and handle a failure.
+
+<br>
+
+## 22. Next Lesson
+
+**Phase 4 — Lesson 5: CompletableFuture Fundamentals**
+
+So far, Future has allowed us to submit a task and retrieve its result.
+
+But there is a limitation: if we call `get()`, the calling thread waits.
+
+In the next lesson, we will start learning `CompletableFuture`, which provides more ways to work with results asynchronously and continue processing when tasks complete.
+
+We will build on the ideas from Callable and Future rather than starting from zero.
