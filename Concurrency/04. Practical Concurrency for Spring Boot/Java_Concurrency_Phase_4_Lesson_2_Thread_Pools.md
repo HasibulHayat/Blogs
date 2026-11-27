@@ -1,0 +1,566 @@
+# Java Concurrency --- Phase 4, Lesson 2: Thread Pools
+
+## Learning objectives
+
+By the end of this lesson, you should understand: - What a thread pool
+is and why applications use one. - Worker threads, task queues, core
+size, and maximum size. - What happens when a pool is busy or
+overloaded. - How to configure a thread pool in Spring Boot. - Why a
+local thread pool is not a durable or distributed job queue.
+
+## 1. Why do we need thread pools?
+
+You can create a thread manually:
+
+``` java
+new Thread(() -> sendBookingConfirmationEmail()).start();
+```
+
+But imagine your Turf application receives hundreds of booking requests
+close together. If every request creates a new thread for background
+work, your application may create too many threads.
+
+Threads consume memory and operating-system scheduling resources.
+Creating and destroying them repeatedly also has a cost. Too many
+threads can cause excessive context switching and put pressure on your
+database or external services.
+
+A thread pool lets you reuse a limited number of worker threads.
+
+## 2. What is a thread pool?
+
+A thread pool is a managed collection of worker threads. You submit
+tasks to it. Workers execute tasks, and when a worker finishes, it can
+take another waiting task.
+
+``` java
+ExecutorService executor = Executors.newFixedThreadPool(3);
+
+executor.submit(() -> sendEmail("A"));
+executor.submit(() -> sendEmail("B"));
+executor.submit(() -> sendEmail("C"));
+executor.submit(() -> sendEmail("D"));
+executor.submit(() -> sendEmail("E"));
+
+executor.shutdown();
+```
+
+There are three worker threads: - Up to three tasks can execute
+concurrently. - Other tasks wait until a worker becomes available. -
+Completed workers are reused for more tasks.
+
+This does not mean only three users can use your application. It means
+this particular executor can run at most three tasks at once.
+
+## 3. The three main parts
+
+A configurable thread pool has:
+
+1.  **Worker threads:** execute tasks.
+2.  **Task queue:** holds tasks waiting for a worker.
+3.  **Pool configuration:** controls worker counts, queue capacity, and
+    what happens when capacity is reached.
+
+``` text
+Tasks submitted
+   A  B  C  D  E
+        |
+        v
+   +-----------+
+   | Task Queue|
+   +-----------+
+     |   |   |
+     v   v   v
+   Worker threads
+      1  2  3
+```
+
+This is a conceptual diagram. The exact scheduling behavior depends on
+the executor and queue.
+
+## 4. `Executors.newFixedThreadPool(n)`
+
+``` java
+ExecutorService executor = Executors.newFixedThreadPool(3);
+```
+
+This creates an executor that uses up to three worker threads.
+
+``` java
+for (int i = 1; i <= 6; i++) {
+    int taskNumber = i;
+
+    executor.submit(() -> {
+        System.out.println(
+            "Task " + taskNumber + " on " +
+            Thread.currentThread().getName()
+        );
+    });
+}
+executor.shutdown();
+```
+
+At most three tasks execute at the same time. The remaining tasks wait.
+
+**Important:** `newFixedThreadPool()` uses an unbounded queue. The
+number of worker threads is limited, but the number of queued tasks is
+not. If tasks arrive faster than workers can process them, the queue can
+grow and consume large amounts of memory.
+
+For production applications, a bounded queue and a deliberate rejection
+policy are often safer.
+
+## 5. `ThreadPoolExecutor`
+
+`ThreadPoolExecutor` is the commonly used configurable implementation of
+a thread pool.
+
+``` java
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+ThreadPoolExecutor executor = new ThreadPoolExecutor(
+    2,                          // corePoolSize
+    5,                          // maximumPoolSize
+    60,                         // keepAliveTime
+    TimeUnit.SECONDS,
+    new ArrayBlockingQueue<>(100) // workQueue
+);
+```
+
+Understand each argument:
+
+### `corePoolSize`
+
+The normal core worker count. The pool generally creates core workers as
+tasks arrive, up to this count. You can also configure it to prestart
+core threads.
+
+Here, the core size is 2.
+
+### `maximumPoolSize`
+
+The upper limit on the number of workers.
+
+Here, the pool may grow to 5 workers if its queue is full and tasks
+continue arriving.
+
+### `keepAliveTime`
+
+How long an excess idle worker may remain alive before being removed.
+
+Here, excess idle workers can be removed after 60 seconds. By default,
+this mainly applies to workers above the core size.
+
+### `workQueue`
+
+Stores tasks waiting for a worker.
+
+`new ArrayBlockingQueue<>(100)` creates a bounded queue that can hold
+100 tasks.
+
+### How task assignment works
+
+For the example above:
+
+1.  If fewer than 2 workers exist, a worker is created for the new task.
+2.  Once the core workers exist, new tasks are normally placed in the
+    queue.
+3.  If the queue is full, the executor may create another worker, up to
+    5.
+4.  If the queue is full and 5 workers already exist, the rejection
+    policy runs.
+
+**Important:** `ThreadPoolExecutor` normally queues tasks after reaching
+the core size; it does not immediately grow to the maximum size.
+
+## 6. Example: core size, queue, and maximum size
+
+Configuration:
+
+``` java
+new ThreadPoolExecutor(
+    2,
+    4,
+    60,
+    TimeUnit.SECONDS,
+    new ArrayBlockingQueue<>(2)
+);
+```
+
+Assume each task takes a long time and no task has completed yet:
+
+  Task   What happens
+  ------ ------------------------------------------------
+  1      Starts on worker 1
+  2      Starts on worker 2
+  3      Waits in queue
+  4      Waits in queue
+  5      Queue is full; worker 3 is created
+  6      Queue is full; worker 4 is created
+  7      Pool and queue are full; rejection policy runs
+
+The executor does not create all four workers immediately. It grows
+according to the submission and queue rules.
+
+## 7. Common executor factory methods
+
+  -----------------------------------------------------------------------------
+  Method                        Worker behavior         Important detail
+  ----------------------------- ----------------------- -----------------------
+  `newSingleThreadExecutor()`   One worker              Tasks run sequentially;
+                                                        queue is unbounded
+
+  `newFixedThreadPool(n)`       Up to n workers         Uses an unbounded queue
+
+  `newCachedThreadPool()`       Can grow as needed      Can create a very large
+                                                        number of threads under
+                                                        load
+  -----------------------------------------------------------------------------
+
+These methods are convenient for learning and controlled workloads. For
+production Spring Boot services, an explicitly configured pool with a
+bounded queue and deliberate rejection policy is often preferable.
+
+## 8. Spring Boot: use a managed thread pool
+
+Prefer a Spring-managed executor instead of creating a new pool inside
+each service method.
+
+``` java
+@Configuration
+@EnableAsync
+public class AsyncConfig {
+
+    @Bean(name = "bookingTaskExecutor")
+    public ThreadPoolTaskExecutor bookingTaskExecutor() {
+        ThreadPoolTaskExecutor executor =
+                new ThreadPoolTaskExecutor();
+
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(5);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("booking-worker-");
+
+        return executor;
+    }
+}
+```
+
+Relevant imports:
+
+``` java
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+```
+
+Use it with `@Async`:
+
+``` java
+@Service
+public class BookingNotificationService {
+
+    @Async("bookingTaskExecutor")
+    public void sendConfirmationEmail(Long bookingId) {
+        // Send the email.
+    }
+}
+```
+
+`@EnableAsync` enables Spring's asynchronous method execution support.
+
+Important details: - `@Async` normally works through a Spring proxy.
+Calling an `@Async` method from another method on the same object
+bypasses the proxy, so it will not run asynchronously. - Call the method
+through another Spring-managed bean. - Do not create a new executor for
+every request. - Do not call `shutdown()` on a shared Spring-managed
+executor from a service method. Let Spring manage its lifecycle. -
+Configure rejection and shutdown behavior deliberately for production. -
+A `void` async method does not return a result to its caller. You need
+appropriate error handling if failures must be observed.
+
+## 9. Apply it to the Turf Booking System
+
+A booking request should synchronously handle important business work:
+
+1.  Validate the request.
+2.  Check availability using database concurrency controls.
+3.  Create the booking.
+4.  Commit the transaction.
+5.  Return the response.
+
+Other work may include: - Confirmation email. - Push notification. -
+Receipt generation. - Non-critical analytics.
+
+A thread pool can process suitable background tasks so the HTTP request
+does not have to wait for all of them.
+
+### A transaction warning
+
+Do not assume that an async task submitted inside a transactional method
+will wait for the transaction to commit.
+
+The worker may run before the booking is visible to another database
+transaction. The transaction might even roll back after a notification
+has already been sent.
+
+For appropriate in-process work, consider
+`@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)`.
+For durable notification delivery and recovery after crashes, use a
+transactional outbox and a background worker.
+
+### A thread pool does not prevent double booking
+
+Two customers may try to book the same slot at nearly the same time. A
+local thread pool does not solve that problem.
+
+Booking correctness must be protected with database-level mechanisms
+such as: - Appropriate unique constraints. - Transactions. - Locking or
+other concurrency-control strategies. - Correct handling of conflicting
+requests.
+
+A thread pool only schedules tasks submitted to that executor.
+
+## 10. One instance versus multiple instances
+
+Suppose the application runs on three servers:
+
+``` text
+             Load Balancer
+             /     |     \
+            v      v      v
+          App A  App B  App C
+```
+
+Each application instance has its own JVM and its own local thread pool.
+
+If each instance has five workers, the three pools can have up to
+fifteen workers in total.
+
+A local executor: - Does not share its queue with other instances. -
+Does not coordinate work across servers. - Does not guarantee a queued
+task survives a process crash. - Does not provide exactly-once
+processing.
+
+For durable work across multiple instances, consider a message broker or
+job-processing system, often combined with a transactional outbox.
+
+## 11. Common mistakes
+
+### Mistake 1: Creating a pool for every request
+
+Bad:
+
+``` java
+public void sendEmailAsync() {
+    ExecutorService executor =
+            Executors.newFixedThreadPool(5);
+
+    executor.submit(() -> sendEmail());
+}
+```
+
+This creates repeated pools, makes resource usage difficult to control,
+and complicates lifecycle management.
+
+Better: inject and reuse a configured Spring-managed executor.
+
+### Mistake 2: Assuming a fixed pool has a bounded queue
+
+`Executors.newFixedThreadPool(5)` limits workers, not queued tasks. Its
+queue is unbounded.
+
+### Mistake 3: Assuming more threads always improve performance
+
+Too many threads can increase memory use, context switching, contention,
+and pressure on databases or external providers.
+
+### Mistake 4: Blocking workers for too long
+
+If all workers are waiting on slow network calls, new tasks cannot
+start. Set sensible timeouts on external calls.
+
+### Mistake 5: Thinking tasks are durable
+
+Tasks waiting in an in-memory queue can be lost if the JVM crashes. Use
+durable messaging or an outbox when recovery is required.
+
+### Mistake 6: Sharing mutable data carelessly
+
+Tasks on different workers may run concurrently. Shared mutable objects
+need appropriate thread-safety.
+
+### Mistake 7: Ignoring overload behavior
+
+When all workers and a bounded queue are full, the executor applies its
+rejection handler. Decide what should happen rather than leaving
+overload behavior accidental.
+
+------------------------------------------------------------------------
+
+## 12. Interview questions and answers
+
+### Q1. What is a thread pool?
+
+A managed collection of reusable worker threads that execute submitted
+tasks. It reduces repeated thread creation and controls concurrent task
+execution.
+
+### Q2. Why use a thread pool instead of creating a thread for every task?
+
+It reuses threads and limits concurrency, helping control resource
+usage.
+
+### Q3. What is the difference between corePoolSize and maximumPoolSize?
+
+`corePoolSize` is the normal core worker count. `maximumPoolSize` is the
+upper limit on the number of workers the pool may create.
+
+### Q4. What is a task queue?
+
+It stores submitted tasks waiting for a worker.
+
+### Q5. What is the problem with `newFixedThreadPool()`?
+
+It uses an unbounded queue. If tasks arrive faster than workers process
+them, the queue can grow and consume excessive memory.
+
+### Q6. What happens when workers and a bounded queue are full?
+
+The executor invokes its rejection handler. The default handler throws
+`RejectedExecutionException`.
+
+### Q7. Are tasks guaranteed to finish in submission order?
+
+No. With multiple workers, tasks may start or finish in a different
+order. A single-thread executor processes tasks sequentially in queue
+order.
+
+### Q8. Is a thread pool shared across Spring Boot instances?
+
+No. A normal executor is local to its JVM. Each instance has its own
+workers and queue.
+
+### Q9. Does a thread pool prevent double booking?
+
+No. Booking correctness requires database concurrency controls,
+transactions, and constraints.
+
+### Q10. Can queued tasks survive an application crash?
+
+Not when they exist only in an in-memory executor queue. Use durable
+messaging or an outbox when tasks must be recoverable.
+
+------------------------------------------------------------------------
+
+## 13. Practice questions with answers
+
+### Practice 1
+
+You configure `Executors.newFixedThreadPool(4)`. How many tasks can
+execute concurrently through it?
+
+**Answer:** At most four.
+
+### Practice 2
+
+A fixed pool has four busy workers. Ten more tasks are submitted. What
+happens?
+
+**Answer:** They wait in the executor's queue. With
+`newFixedThreadPool`, that queue is unbounded and can continue growing.
+
+### Practice 3
+
+Why might a bounded queue be safer?
+
+**Answer:** It limits waiting tasks and helps prevent unlimited memory
+growth. When full, the rejection policy is applied.
+
+### Practice 4
+
+Your application runs on three instances, each with a pool of five
+workers. How many workers can exist across those pools?
+
+**Answer:** Up to fifteen.
+
+### Practice 5
+
+An email task is submitted before the booking transaction commits. What
+could go wrong?
+
+**Answer:** The worker might run before the booking commits, or the
+transaction could roll back after the email is sent. Use post-commit
+processing or an outbox for reliable behavior.
+
+### Practice 6
+
+Why avoid creating a new pool inside every service method call?
+
+**Answer:** It creates repeated pools, makes resource usage hard to
+control, and complicates lifecycle management. Reuse a configured
+Spring-managed executor.
+
+------------------------------------------------------------------------
+
+## 14. System design question
+
+### How would you process booking notifications without creating unlimited threads?
+
+A practical design:
+
+1.  The booking API validates the request and commits the booking
+    transaction.
+2.  The transaction also writes an outbox event if reliable delivery is
+    required.
+3.  A background worker reads eligible events.
+4.  A configured, bounded worker pool processes notification tasks.
+5.  Each task calls the email or push provider with timeouts.
+6.  Failures are recorded and retried using a bounded retry policy.
+7.  Events are marked complete only after successful processing.
+8.  Monitoring tracks queue depth, task duration, failures, and rejected
+    submissions.
+
+For a simple first version, an in-process executor can be sufficient for
+best-effort tasks. For important notifications that must not disappear
+on restart, use a durable outbox and worker/message-broker design.
+
+------------------------------------------------------------------------
+
+## 15. What you should remember
+
+-   A thread pool manages reusable worker threads.
+-   One worker executes one task at a time.
+-   A pool with `n` workers can execute at most `n` tasks concurrently.
+-   Tasks wait in a queue when workers are busy.
+-   `newFixedThreadPool(n)` uses an unbounded queue.
+-   `ThreadPoolExecutor` lets you configure core size, maximum size,
+    queue, and rejection handling.
+-   More threads do not always mean better performance.
+-   Use a shared Spring-managed executor in Spring Boot.
+-   A local thread pool is not a distributed queue and does not make
+    tasks durable.
+-   Database transactions and constraints---not thread pools---protect
+    booking correctness.
+
+## Lesson 2 checklist
+
+-   [ ] I can explain what a thread pool is.
+-   [ ] I understand worker threads and task queues.
+-   [ ] I understand `newFixedThreadPool()`.
+-   [ ] I understand core pool size and maximum pool size.
+-   [ ] I understand why bounded queues matter.
+-   [ ] I can configure a Spring-managed executor.
+-   [ ] I know why an in-memory executor is not durable or distributed.
+-   [ ] I can explain where thread pools fit into the Turf booking
+    workflow.
+
+## Next lesson
+
+**Phase 4 --- Lesson 3: Callable and Future**
+
+You will learn how to submit tasks that return results, retrieve those
+results, and handle the fact that a result may not be ready immediately.
