@@ -1,0 +1,1132 @@
+`<br>`{=html} \# Practical Concurrency for Spring Boot - Phase 4, Lesson
+3 : Callable and Future
+
+`<br>`{=html} `<br>`{=html}
+
+## 1. What You Will Learn
+
+In the previous lessons, you learned how to create executors and
+configure thread pools. You also learned that an executor accepts tasks
+and runs them using worker threads.
+
+So far, most examples used `Runnable`.
+
+But there is an important limitation:
+
+**A `Runnable` task cannot directly return a result.**
+
+In real applications, background tasks often need to calculate or
+retrieve something and return the result to the code that submitted the
+task.
+
+For example, in your Turf Booking System:
+
+-   Calculate the total booking price.
+-   Retrieve a venue's availability summary.
+-   Generate a booking invoice.
+-   Calculate a payment amount including applicable fees.
+-   Fetch data from multiple independent services.
+
+For these situations, Java provides:
+
+-   `Callable`
+-   `Future`
+
+By the end of this lesson, you should understand how to submit a task
+that returns a result, retrieve that result, handle failures, and avoid
+blocking application threads unnecessarily.
+
+`<br>`{=html}
+
+## 2. Understanding Runnable's Limitation
+
+A `Runnable` represents a task that does not return a result.
+
+``` java
+Runnable task = () -> {
+    System.out.println("Processing booking");
+};
+
+ExecutorService executor = Executors.newFixedThreadPool(3);
+
+executor.submit(task);
+
+executor.shutdown();
+```
+
+The task executes, but it does not return a value to the submitting
+code.
+
+Its functional method is:
+
+``` java
+public void run();
+```
+
+It returns `void`.
+
+What if you want the task to return a calculated booking amount?
+
+You cannot return a value from `Runnable.run()`.
+
+You could store the result in a shared variable, but that introduces
+shared mutable state and can create synchronization problems when
+multiple threads access the same data.
+
+Java provides `Callable` for tasks that return results.
+
+`<br>`{=html}
+
+## 3. What Is Callable?
+
+`Callable<V>` is an interface from `java.util.concurrent`.
+
+It represents a task that:
+
+1.  Can return a result.
+2.  Can throw a checked exception.
+3.  Runs when submitted to an appropriate executor.
+
+Its main method is:
+
+``` java
+V call() throws Exception;
+```
+
+Here, `V` represents the return type.
+
+For example:
+
+``` java
+Callable<Integer> task = () -> {
+    return 100;
+};
+```
+
+This task returns an `Integer`.
+
+Another example:
+
+``` java
+Callable<String> task = () -> {
+    return "Booking processed";
+};
+```
+
+This task returns a `String`.
+
+You can also write it more concisely:
+
+``` java
+Callable<Integer> task = () -> 100;
+```
+
+### Callable vs Runnable
+
+  -----------------------------------------------------------------------
+  Feature                 Runnable                Callable
+  ----------------------- ----------------------- -----------------------
+  Main method             `run()`                 `call()`
+
+  Return value            No                      Yes
+
+  Checked exception       Cannot declare checked  Can declare `Exception`
+                          exceptions              
+
+  Typical use             Fire-and-forget task    Task whose result is
+                                                  needed
+  -----------------------------------------------------------------------
+
+Both represent work that can be executed by an executor.
+
+`<br>`{=html}
+
+## 4. Submitting Callable to an ExecutorService
+
+An `ExecutorService` can accept a `Callable` using `submit()`.
+
+Example:
+
+``` java
+ExecutorService executor = Executors.newFixedThreadPool(3);
+
+Callable<Integer> task = () -> {
+    int price = 1500;
+    int serviceFee = 100;
+
+    return price + serviceFee;
+};
+
+Future<Integer> future = executor.submit(task);
+
+executor.shutdown();
+```
+
+Notice the return type:
+
+``` java
+Future<Integer>
+```
+
+The `submit()` method does not directly return the task's result.
+
+It returns a `Future` that represents the result which may become
+available later.
+
+The task may still be running when `submit()` returns.
+
+This is important: submitting a task is not the same as waiting for it
+to finish.
+
+`<br>`{=html}
+
+## 5. What Is Future?
+
+`Future<V>` is an interface that represents the result of an
+asynchronous computation.
+
+It gives you a way to:
+
+-   Check whether the task has completed.
+-   Wait for the task to finish.
+-   Retrieve its result.
+-   Cancel the task.
+-   Check whether cancellation happened.
+
+For example:
+
+``` java
+Future<Integer> future = executor.submit(task);
+```
+
+The `Future<Integer>` represents a result of type `Integer`.
+
+It does not necessarily contain the result immediately. The result
+becomes available after the task completes successfully.
+
+### Important Future methods
+
+  Method                 Purpose
+  ---------------------- ---------------------------------------------
+  `get()`                Waits for completion and returns the result
+  `get(timeout, unit)`   Waits up to a specified duration
+  `isDone()`             Checks whether the task has completed
+  `isCancelled()`        Checks whether the task was cancelled
+  `cancel(boolean)`      Attempts to cancel the task
+
+Let's understand them one by one.
+
+`<br>`{=html}
+
+## 6. Future.get() --- Retrieving the Result
+
+`get()` waits until the task completes and then returns its result.
+
+``` java
+ExecutorService executor = Executors.newFixedThreadPool(2);
+
+Callable<Integer> task = () -> {
+    Thread.sleep(2000);
+    return 1600;
+};
+
+Future<Integer> future = executor.submit(task);
+
+Integer result = future.get();
+
+System.out.println(result);
+
+executor.shutdown();
+```
+
+The task sleeps for two seconds.
+
+When the main thread calls:
+
+``` java
+Integer result = future.get();
+```
+
+the main thread waits until the task finishes.
+
+After completion, `get()` returns `1600`.
+
+### Important: get() is a blocking operation
+
+If the task takes five seconds, the thread calling `get()` may wait for
+five seconds.
+
+This means `Future` supports asynchronous task execution, but calling
+`get()` immediately can make the calling thread wait synchronously.
+
+Consider:
+
+``` java
+Future<Integer> future = executor.submit(task);
+
+Integer result = future.get();
+```
+
+The task runs on an executor worker thread, but the current thread
+blocks at `get()` until the result is ready.
+
+This is not necessarily wrong. Sometimes you need the result before
+continuing.
+
+However, you should avoid blocking request threads unnecessarily in a
+Spring Boot application.
+
+`<br>`{=html}
+
+## 7. Future.isDone() --- Checking Completion
+
+`isDone()` checks whether the computation has completed.
+
+``` java
+Future<Integer> future = executor.submit(() -> {
+    Thread.sleep(3000);
+    return 2000;
+});
+
+System.out.println(future.isDone());
+
+Thread.sleep(3500);
+
+System.out.println(future.isDone());
+```
+
+Possible output:
+
+``` text
+false
+true
+```
+
+The first check happens while the task is likely still running.
+
+The second check happens after enough time has passed for it to finish.
+
+Important details:
+
+-   `isDone()` does not wait.
+-   It returns `true` when the task completed, was cancelled, or failed.
+-   It does not tell you whether the task succeeded.
+
+To retrieve the result or learn about a failure, call `get()`.
+
+`<br>`{=html}
+
+## 8. Future.get(timeout, unit) --- Waiting With a Timeout
+
+Sometimes you do not want to wait indefinitely for a task.
+
+Use:
+
+``` java
+future.get(2, TimeUnit.SECONDS);
+```
+
+This waits for at most two seconds.
+
+Example:
+
+``` java
+ExecutorService executor = Executors.newFixedThreadPool(2);
+
+Callable<String> task = () -> {
+    Thread.sleep(5000);
+    return "Availability calculated";
+};
+
+Future<String> future = executor.submit(task);
+
+try {
+    String result = future.get(2, TimeUnit.SECONDS);
+    System.out.println(result);
+} catch (TimeoutException e) {
+    System.out.println("Task took too long");
+} catch (ExecutionException e) {
+    System.out.println("Task failed");
+} catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+    System.out.println("Current thread was interrupted");
+} finally {
+    executor.shutdown();
+}
+```
+
+The task takes about five seconds, but `get()` waits only two seconds.
+
+It then throws `TimeoutException`.
+
+### Important: timeout does not automatically cancel the task
+
+This is a common mistake.
+
+A timeout from `get(timeout, unit)` means the caller stopped waiting. It
+does not mean the task itself stopped running.
+
+If you want to attempt cancellation after a timeout, call:
+
+``` java
+future.cancel(true);
+```
+
+Whether the task actually stops depends on how it responds to
+interruption.
+
+`<br>`{=html}
+
+## 9. Handling Exceptions From Callable
+
+A `Callable` can throw exceptions.
+
+Example:
+
+``` java
+Callable<Integer> task = () -> {
+    int total = 1000;
+    int numberOfPlayers = 0;
+
+    return total / numberOfPlayers;
+};
+```
+
+This task throws `ArithmeticException`.
+
+When submitted through `ExecutorService.submit()`, the exception is
+captured as part of the task's result.
+
+It is then reported to the thread calling `Future.get()` through
+`ExecutionException`.
+
+Example:
+
+``` java
+ExecutorService executor = Executors.newFixedThreadPool(2);
+
+Callable<Integer> task = () -> {
+    int total = 1000;
+    int numberOfPlayers = 0;
+
+    return total / numberOfPlayers;
+};
+
+Future<Integer> future = executor.submit(task);
+
+try {
+    Integer result = future.get();
+    System.out.println(result);
+} catch (ExecutionException e) {
+    Throwable cause = e.getCause();
+    System.out.println("Task failed: " + cause);
+} catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+    System.out.println("Waiting thread was interrupted");
+} finally {
+    executor.shutdown();
+}
+```
+
+### Why ExecutionException?
+
+The executor runs the task on another thread.
+
+The exception occurs in that worker thread, not directly in the thread
+calling `get()`.
+
+`Future.get()` reports the failed computation using
+`ExecutionException`.
+
+The original exception is available through:
+
+``` java
+e.getCause()
+```
+
+### Two important exceptions from get()
+
+  -----------------------------------------------------------------------
+  Exception                           Meaning
+  ----------------------------------- -----------------------------------
+  `InterruptedException`              The thread waiting in `get()` was
+                                      interrupted
+
+  `ExecutionException`                The submitted task failed
+
+  `TimeoutException`                  The timed `get()` did not receive a
+                                      result before its deadline
+
+  `CancellationException`             The task was cancelled before its
+                                      result could be retrieved
+  -----------------------------------------------------------------------
+
+Handle interruption correctly:
+
+``` java
+catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+}
+```
+
+Restoring the interrupt flag is important because catching
+`InterruptedException` clears the thread's interrupt status.
+
+Do not silently swallow interruption.
+
+`<br>`{=html}
+
+## 10. Future.cancel() --- Cancelling a Task
+
+You can attempt to cancel a task using:
+
+``` java
+future.cancel(true);
+```
+
+The method accepts a boolean:
+
+-   `cancel(false)`: Do not interrupt the task if it is already running.
+-   `cancel(true)`: Request interruption of the task if it is running.
+
+Example:
+
+``` java
+ExecutorService executor = Executors.newFixedThreadPool(2);
+
+Callable<String> task = () -> {
+    for (int i = 1; i <= 10; i++) {
+        if (Thread.currentThread().isInterrupted()) {
+            System.out.println("Task noticed interruption");
+            return "Stopped";
+        }
+
+        System.out.println("Processing step " + i);
+        Thread.sleep(1000);
+    }
+
+    return "Completed";
+};
+
+Future<String> future = executor.submit(task);
+
+Thread.sleep(2500);
+
+boolean cancelled = future.cancel(true);
+
+System.out.println("Cancellation requested: " + cancelled);
+
+executor.shutdown();
+```
+
+The task checks its interrupt status and can stop its work
+cooperatively.
+
+### Cancellation is not a guarantee that the task stops immediately
+
+Calling:
+
+``` java
+future.cancel(true);
+```
+
+requests interruption.
+
+The task must respond appropriately.
+
+For example, it can:
+
+-   Check `Thread.currentThread().isInterrupted()`.
+-   Handle `InterruptedException` correctly.
+-   Stop its work when interruption is requested.
+
+If a task ignores interruption, it may continue running.
+
+### What happens after cancellation?
+
+After successful cancellation:
+
+``` java
+future.isCancelled(); // true
+future.isDone();      // true
+```
+
+Calling `get()` on a cancelled future throws `CancellationException`.
+
+`<br>`{=html}
+
+## 11. Runnable Can Also Be Submitted With Future
+
+Although `Runnable` does not return a result,
+`ExecutorService.submit(Runnable)` also returns a `Future<?>`.
+
+Example:
+
+``` java
+Runnable task = () -> {
+    System.out.println("Sending booking notification");
+};
+
+Future<?> future = executor.submit(task);
+```
+
+You can use this future to:
+
+-   Check completion.
+-   Attempt cancellation.
+-   Wait for completion using `get()`.
+
+But its result is `null` when the task completes normally.
+
+If you need a result, use `Callable<V>`.
+
+`<br>`{=html}
+
+## 12. Practical Turf Booking Example
+
+Suppose a customer is viewing a turf booking page.
+
+You want to calculate the estimated booking price in a separate task.
+
+For this example, assume the price calculation is independent of the
+request's database transaction and uses data already available to the
+service.
+
+``` java
+@Service
+public class BookingPriceService {
+
+    private final ExecutorService executor;
+
+    public BookingPriceService(ExecutorService executor) {
+        this.executor = executor;
+    }
+
+    public Future<BigDecimal> calculatePrice(
+            BigDecimal hourlyRate,
+            int hours
+    ) {
+        Callable<BigDecimal> task = () -> {
+            if (hours <= 0) {
+                throw new IllegalArgumentException(
+                    "Hours must be greater than zero"
+                );
+            }
+
+            return hourlyRate.multiply(
+                BigDecimal.valueOf(hours)
+            );
+        };
+
+        return executor.submit(task);
+    }
+}
+```
+
+A caller can submit the calculation:
+
+``` java
+Future<BigDecimal> future =
+        bookingPriceService.calculatePrice(
+            new BigDecimal("1500"),
+            2
+        );
+```
+
+And later retrieve the result:
+
+``` java
+try {
+    BigDecimal price = future.get(
+        2,
+        TimeUnit.SECONDS
+    );
+
+    System.out.println("Estimated price: " + price);
+
+} catch (TimeoutException e) {
+    // Handle slow calculation
+} catch (ExecutionException e) {
+    // Handle calculation failure
+} catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+}
+```
+
+### Important production considerations
+
+This example demonstrates the API, not necessarily the best architecture
+for a real booking price calculation.
+
+A simple multiplication is too cheap to justify a separate thread.
+
+For real pricing, consider:
+
+-   Whether the work is actually expensive or blocking.
+-   Whether the result is needed before responding.
+-   Whether pricing data can change while the task runs.
+-   Whether the calculation must use a consistent database snapshot.
+-   Whether a timeout and fallback behavior are defined.
+
+Never use a background calculation as the authority for the final amount
+charged without validating the price again in the booking/payment
+workflow.
+
+### Spring Boot executor configuration
+
+In a Spring Boot application, prefer a Spring-managed executor rather
+than creating a new executor inside each service.
+
+For example:
+
+``` java
+@Configuration
+public class AsyncConfig {
+
+    @Bean(destroyMethod = "shutdown")
+    public ExecutorService bookingExecutor() {
+        return new ThreadPoolExecutor(
+            5,
+            10,
+            60,
+            TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(100),
+            new ThreadPoolExecutor.AbortPolicy()
+        );
+    }
+}
+```
+
+This is a simplified configuration example. In a production Spring
+application, you may instead use `ThreadPoolTaskExecutor`, which
+integrates with Spring's lifecycle and task execution support.
+
+Do not create a new thread pool for every request or every method call.
+
+`<br>`{=html}
+
+## 13. Important Spring Boot and Turf Design Considerations
+
+### 13.1 Future.get() can block an HTTP request thread
+
+Suppose a controller does this:
+
+``` java
+@GetMapping("/price")
+public BigDecimal getPrice() throws Exception {
+    Future<BigDecimal> future = priceService.calculatePrice();
+
+    return future.get();
+}
+```
+
+The calculation runs on a worker thread, but the HTTP request thread
+waits for it.
+
+If many requests do this, request threads can remain occupied waiting
+for background work.
+
+Use asynchronous execution only when it provides a real benefit.
+
+For straightforward database queries or quick calculations, ordinary
+synchronous service code may be simpler and more efficient.
+
+### 13.2 Do not use Future as a booking concurrency solution
+
+Imagine two customers attempt to book the same turf slot.
+
+Submitting both booking operations to a thread pool does not guarantee
+that only one succeeds.
+
+A thread pool controls task execution inside one application process. It
+does not coordinate booking decisions across multiple application
+instances.
+
+For booking correctness, use database-level concurrency control, such
+as:
+
+-   Appropriate unique constraints.
+-   Transactions.
+-   Row-level locking where suitable.
+-   A carefully designed booking state transition.
+
+### 13.3 Do not assume a Future survives an application restart
+
+A `Future` is an in-memory representation of a task in the current JVM.
+
+If the application process crashes, the future and its task state are
+lost.
+
+For important work such as payment reconciliation, booking
+notifications, or invoice generation, consider durable mechanisms such
+as a transactional outbox and a persistent message broker.
+
+### 13.4 Be careful with database transactions and worker threads
+
+Spring transactions are generally thread-bound.
+
+Submitting work to another thread does not automatically transfer the
+caller's transaction to that worker thread.
+
+If a worker needs database access, it should perform its own
+appropriately managed transaction.
+
+Also, do not start a notification task before the booking transaction
+commits if that notification must only describe a successfully committed
+booking.
+
+`<br>`{=html}
+
+## 14. Common Mistakes
+
+### Mistake 1: Calling get() immediately without understanding the blocking
+
+``` java
+Future<Integer> future = executor.submit(task);
+Integer result = future.get();
+```
+
+This may block the current thread until completion.
+
+Use it when you genuinely need to wait for the result.
+
+### Mistake 2: Assuming timeout cancels the task
+
+``` java
+future.get(2, TimeUnit.SECONDS);
+```
+
+A timeout only stops the caller from waiting. It does not automatically
+stop the worker task.
+
+### Mistake 3: Ignoring ExecutionException
+
+A task may fail even if `submit()` returned normally.
+
+Handle `ExecutionException` when retrieving the result.
+
+### Mistake 4: Swallowing InterruptedException
+
+Bad:
+
+``` java
+catch (InterruptedException e) {
+    // Ignore
+}
+```
+
+Better:
+
+``` java
+catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+}
+```
+
+### Mistake 5: Assuming cancel(true) forcibly kills a thread
+
+It requests interruption. The task must cooperate.
+
+### Mistake 6: Creating a new executor for every request
+
+This can create too many threads and consume excessive resources.
+
+Use a shared, appropriately configured executor.
+
+### Mistake 7: Using Callable for trivial work
+
+A separate thread has scheduling and coordination costs.
+
+Do not introduce concurrency unless it helps.
+
+### Mistake 8: Treating Future as durable background-job storage
+
+A `Future` is not a persistent job record or distributed queue.
+
+Use durable infrastructure for work that must survive process restarts.
+
+`<br>`{=html}
+
+## 15. Interview Questions and Answers
+
+### Q1. What is Callable in Java?
+
+`Callable<V>` represents a task that returns a result of type `V` and
+may throw an exception. Its main method is `call()`.
+
+### Q2. What is the difference between Runnable and Callable?
+
+`Runnable` has a `void run()` method and does not return a result.
+`Callable` has a `call()` method that returns a value and can throw
+checked exceptions.
+
+### Q3. What is Future?
+
+`Future<V>` represents the result of an asynchronous computation. It
+allows you to retrieve the result, check completion, and attempt
+cancellation.
+
+### Q4. Does submit() wait for a Callable to finish?
+
+No. `submit()` schedules the task and returns a `Future`. The task may
+still be running.
+
+### Q5. Does Future.get() block?
+
+Yes. `get()` waits until the task completes, is cancelled, or fails.
+
+### Q6. What is the difference between get() and get(timeout, unit)?
+
+`get()` can wait indefinitely. The timed version waits only for the
+specified duration and throws `TimeoutException` if the result is not
+ready.
+
+### Q7. Does TimeoutException cancel the task?
+
+No. It means the caller's waiting period expired. The task may continue
+running.
+
+### Q8. What is ExecutionException?
+
+It is thrown by `Future.get()` when the submitted task completed
+exceptionally. The original cause can be obtained using `getCause()`.
+
+### Q9. What does cancel(true) do?
+
+It attempts to cancel the task and requests interruption if the task is
+already running. The task must cooperate with interruption to stop
+promptly.
+
+### Q10. Can Runnable submission return a Future?
+
+Yes. `ExecutorService.submit(Runnable)` returns a `Future<?>`, but its
+result is `null` when the task completes normally.
+
+### Q11. Does Future make an HTTP request non-blocking?
+
+Not automatically. If the request thread calls `get()`, it blocks while
+waiting. The work runs on another thread, but the request thread is
+still occupied.
+
+### Q12. Can Future coordinate bookings across multiple Spring Boot instances?
+
+No. A Future is local to the JVM. Distributed booking correctness must
+be enforced through shared infrastructure such as the database.
+
+`<br>`{=html}
+
+## 16. Practice Questions With Answers
+
+### Practice 1: Return a value from Callable
+
+**Question:** Write a Callable that returns the total price for 3 hours
+at 1200 per hour.
+
+**Answer:**
+
+``` java
+Callable<Integer> task = () -> 3 * 1200;
+```
+
+### Practice 2: Submit and retrieve the result
+
+**Question:** Submit the task to an ExecutorService and retrieve its
+result.
+
+**Answer:**
+
+``` java
+ExecutorService executor =
+        Executors.newFixedThreadPool(2);
+
+Callable<Integer> task = () -> 3600;
+
+Future<Integer> future = executor.submit(task);
+
+try {
+    Integer result = future.get();
+    System.out.println(result);
+} catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+} catch (ExecutionException e) {
+    System.out.println(e.getCause());
+} finally {
+    executor.shutdown();
+}
+```
+
+### Practice 3: Check completion without waiting
+
+**Question:** Which method checks whether a task has completed without
+blocking?
+
+**Answer:**
+
+``` java
+future.isDone();
+```
+
+### Practice 4: Add a timeout
+
+**Question:** Retrieve a result while waiting for at most 3 seconds.
+
+**Answer:**
+
+``` java
+Integer result = future.get(3, TimeUnit.SECONDS);
+```
+
+Handle `TimeoutException`, `ExecutionException`, and
+`InterruptedException`.
+
+### Practice 5: Handle a task failure
+
+**Question:** A Callable throws `IllegalStateException`. Which exception
+does `Future.get()` throw?
+
+**Answer:** `ExecutionException`. The original `IllegalStateException`
+is available through `getCause()`.
+
+### Practice 6: Cancel a long-running task
+
+**Question:** Request cancellation and interruption of a submitted task.
+
+**Answer:**
+
+``` java
+future.cancel(true);
+```
+
+The task should respond to interruption.
+
+### Practice 7: Explain this code
+
+``` java
+Future<String> future = executor.submit(() -> {
+    Thread.sleep(3000);
+    return "Done";
+});
+
+System.out.println("Submitted");
+
+String result = future.get();
+
+System.out.println(result);
+```
+
+**Answer:**
+
+-   The task is submitted to the executor.
+-   `"Submitted"` can print while the task is still running.
+-   `get()` blocks the calling thread until the task completes.
+-   `"Done"` is printed after approximately three seconds, assuming
+    normal execution.
+
+`<br>`{=html}
+
+## 17. System Design Questions for Your Turf Project
+
+### Question 1: A booking page needs to calculate a price. Should you use Callable and Future?
+
+**Answer:**
+
+Only if the calculation involves meaningful independent work that
+benefits from running concurrently.
+
+For a simple calculation, synchronous code is usually better.
+
+If the calculation involves independent slow operations, concurrency may
+help, but you must consider request-thread blocking, timeouts, data
+consistency, and failure handling.
+
+### Question 2: Can you submit a booking operation to an executor and assume the first task wins?
+
+**Answer:**
+
+No.
+
+Task scheduling order is not a booking correctness guarantee. Multiple
+application instances can also execute tasks independently.
+
+The database must enforce the booking rules through transactions and
+suitable constraints or locking.
+
+### Question 3: A notification task is submitted and the application crashes. Will its Future resume after restart?
+
+**Answer:**
+
+No. The Future and executor task are in-memory state.
+
+For reliable notification delivery, use a durable pattern such as a
+transactional outbox with a worker that can retry pending records.
+
+### Question 4: A task takes too long. Is get(timeout, unit) enough to stop it?
+
+**Answer:**
+
+No. It limits how long the caller waits. If the task should also stop,
+cancellation may be requested, and the task must respond to
+interruption.
+
+### Question 5: Should a worker thread use the request's database transaction?
+
+**Answer:**
+
+Do not assume it can. Spring's normal transaction context is
+thread-bound and is not automatically transferred to another executor
+thread.
+
+The worker should use its own appropriate transaction boundary.
+
+`<br>`{=html}
+
+## 18. Lesson Checklist
+
+You should now be able to explain and use:
+
+-   [ ] What `Callable<V>` is.
+-   [ ] The difference between `Runnable` and `Callable`.
+-   [ ] How to submit a Callable using `ExecutorService.submit()`.
+-   [ ] What `Future<V>` represents.
+-   [ ] How `Future.get()` retrieves a result.
+-   [ ] Why `get()` blocks.
+-   [ ] How `isDone()` works.
+-   [ ] How timed `get()` works.
+-   [ ] Why a timeout does not automatically cancel a task.
+-   [ ] How to handle `ExecutionException`.
+-   [ ] How to handle `InterruptedException` correctly.
+-   [ ] How `cancel(true)` requests interruption.
+-   [ ] Why Future is not a durable background-job mechanism.
+-   [ ] Why Future and thread pools do not prevent double booking.
+-   [ ] Why work on another thread does not automatically share a Spring
+    transaction.
+
+`<br>`{=html}
+
+## 19. Key Takeaways
+
+1.  `Runnable` represents a task that does not return a result.
+2.  `Callable<V>` represents a task that returns a result.
+3.  `ExecutorService.submit(Callable)` returns a `Future<V>`.
+4.  `Future` represents a result that may become available later.
+5.  `Future.get()` blocks until the result is available.
+6.  Timed `get()` limits the caller's waiting time, not necessarily the
+    task's execution time.
+7.  Task failures are reported through `ExecutionException`.
+8.  Cancellation is cooperative; interruption is not a forced thread
+    kill.
+9.  A Future is local in-memory state, not a durable job queue.
+10. Database-level controls---not thread pools or Future---protect Turf
+    bookings from conflicting reservations.
+
+`<br>`{=html}
+
+## 20. Next Lesson
+
+**Phase 4 --- Lesson 4: Future --- Timeouts, Cancellation and
+Exceptions**
+
+In the next lesson, we will go deeper into failure handling,
+cancellation behavior, interruption, timeout strategies, and how to make
+background tasks safer and more predictable in a Spring Boot
+application.
