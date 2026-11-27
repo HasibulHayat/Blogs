@@ -1,0 +1,1681 @@
+<br>
+
+# Practical Concurrency for Spring Boot - Phase 4, Lesson 5 : CompletableFuture Fundamentals
+
+<br>
+
+<br>
+
+
+<br>
+
+<br>
+
+## 1. What You Will Learn
+
+In the previous lessons, you learned:
+
+- `Runnable` represents a task that does not return a result.
+- `Callable` represents a task that can return a result.
+- `ExecutorService` runs submitted tasks using worker threads.
+- `Future` represents the result of a task that may finish later.
+- `Future.get()` waits for the result.
+- Timed `get()` limits how long the caller waits.
+- A task can fail, time out, or be cancelled.
+
+Now we will learn **CompletableFuture**.
+
+`CompletableFuture` is a class in Java that helps you work with results that become available later.
+
+It can do more than a basic `Future`:
+
+- Run a task asynchronously.
+- Receive the result when the task completes.
+- Continue with another operation after the result is ready.
+- Handle errors.
+- Combine results from multiple tasks.
+- Avoid manually calling `get()` just to continue processing.
+
+In this lesson, we will focus on the fundamentals. We will learn how to create a `CompletableFuture`, how to receive its result, and how it differs from `Future`.
+
+We will use examples related to your Turf Booking System.
+
+<br>
+
+## 2. Why Was Future Not Enough?
+
+Let's review a simple example from the previous lesson.
+
+```java
+ExecutorService executor = Executors.newFixedThreadPool(2);
+
+Future<String> future = executor.submit(() -> {
+    Thread.sleep(2000);
+    return "Booking information";
+});
+
+String result = future.get();
+
+System.out.println(result);
+```
+
+What happens here?
+
+1. We submit a task to the executor.
+2. A worker thread runs the task.
+3. The task takes two seconds.
+4. The main thread calls `future.get()`.
+5. The main thread waits until the result is ready.
+6. The result is printed.
+
+The problem is not that `Future` is useless. It is useful.
+
+The limitation is that a basic `Future` does not provide a convenient way to say:
+
+"When this task finishes, automatically take its result and run another piece of code."
+
+With a basic Future, we commonly have to call `get()` to retrieve the result. That call blocks the thread if the result is not ready.
+
+For example, imagine:
+
+1. Fetch venue information.
+2. Use that information to calculate the booking price.
+3. Use the price to prepare a response.
+
+With a basic Future, you may end up waiting for each result manually.
+
+`CompletableFuture` gives us methods to describe what should happen when a task completes.
+
+<br>
+
+## 3. What Is CompletableFuture?
+
+`CompletableFuture` is a Java class that represents a result that may become available in the future.
+
+It implements the `Future` interface and also the `CompletionStage` interface.
+
+You do not need to understand every detail of `CompletionStage` yet. For now, remember:
+
+- `Future` lets you wait for a result.
+- `CompletableFuture` lets you wait for a result and define what should happen when it is ready.
+
+Example:
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(() -> {
+            return "Booking information";
+        });
+```
+
+This submits a task for asynchronous execution.
+
+The task returns a String.
+
+The `CompletableFuture<String>` represents the result of that task.
+
+The result may be available immediately, or it may become available a little later.
+
+<br>
+
+### 3.1 Which package is CompletableFuture in?
+
+It is in:
+
+```java
+java.util.concurrent
+```
+
+Import it like this:
+
+```java
+import java.util.concurrent.CompletableFuture;
+```
+
+If you need an executor too, you may also import:
+
+```java
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+```
+
+<br>
+
+### 3.2 What does the generic type mean?
+
+Look at:
+
+```java
+CompletableFuture<String>
+```
+
+The `String` tells us the type of result that the future will produce.
+
+Examples:
+
+```java
+CompletableFuture<String> nameFuture;
+CompletableFuture<Integer> countFuture;
+CompletableFuture<BigDecimal> priceFuture;
+CompletableFuture<Boolean> availableFuture;
+```
+
+The type inside the angle brackets is the eventual result type.
+
+<br>
+
+## 4. Creating a CompletableFuture With supplyAsync()
+
+The most common starting point when a task returns a value is:
+
+```java
+CompletableFuture.supplyAsync(...)
+```
+
+Example:
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(() -> {
+            return "Hello from another thread";
+        });
+```
+
+Let's understand it.
+
+- `supplyAsync()` accepts a `Supplier`.
+- The Supplier is a function that provides a value.
+- Java runs that function asynchronously.
+- The returned CompletableFuture represents the value that the function will produce.
+
+You can write it more shortly:
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(
+                () -> "Hello from another thread"
+        );
+```
+
+Both versions do the same thing.
+
+<br>
+
+### 4.1 What is Supplier?
+
+`Supplier<T>` is a functional interface from:
+
+```java
+java.util.function
+```
+
+It represents an operation that supplies a value and takes no arguments.
+
+Its main method is:
+
+```java
+T get();
+```
+
+For example:
+
+```java
+Supplier<String> supplier = () -> "Turf booking";
+```
+
+Calling:
+
+```java
+String value = supplier.get();
+```
+
+returns:
+
+```text
+Turf booking
+```
+
+You do not need to create a Supplier variable every time. A lambda expression can be passed directly to `supplyAsync()`.
+
+<br>
+
+### 4.2 Why is it called supplyAsync?
+
+Because the task supplies a result, and it is scheduled for asynchronous execution.
+
+Use `supplyAsync()` when your task returns something.
+
+Examples:
+
+- Calculate a booking price.
+- Fetch a venue's details.
+- Count bookings.
+- Retrieve a customer's information.
+- Generate a report summary.
+
+<br>
+
+## 5. Creating a CompletableFuture With runAsync()
+
+What if the task does not return a value?
+
+For example, you want to write a log message or perform a task where the caller does not need a result.
+
+Use:
+
+```java
+CompletableFuture.runAsync(...)
+```
+
+Example:
+
+```java
+CompletableFuture<Void> future =
+        CompletableFuture.runAsync(() -> {
+            System.out.println("Sending booking notification");
+        });
+```
+
+Notice the type:
+
+```java
+CompletableFuture<Void>
+```
+
+`Void` means this asynchronous task does not produce a useful result.
+
+The task still runs, but there is no returned value to retrieve.
+
+<br>
+
+### 5.1 supplyAsync() vs runAsync()
+
+| Method | Use it when | Future type example |
+|---|---|---|
+| `supplyAsync()` | The task returns a value | `CompletableFuture<String>` |
+| `runAsync()` | The task does not return a value | `CompletableFuture<Void>` |
+
+Examples:
+
+```java
+// Returns a price
+CompletableFuture<BigDecimal> priceFuture =
+        CompletableFuture.supplyAsync(() -> calculatePrice());
+
+// Does not return a result
+CompletableFuture<Void> notificationFuture =
+        CompletableFuture.runAsync(() -> sendNotification());
+```
+
+Remember this distinction. You will use it frequently.
+
+<br>
+
+## 6. Where Does CompletableFuture Run Its Task?
+
+This is important.
+
+When you write:
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(
+                () -> calculateBookingPrice()
+        );
+```
+
+you did not provide an Executor.
+
+In that case, Java normally uses the shared `ForkJoinPool.commonPool()` for asynchronous execution.
+
+You do not need to create a new thread yourself.
+
+<br>
+
+### 6.1 What is ForkJoinPool.commonPool()?
+
+It is a shared pool of worker threads provided by the Java runtime.
+
+When you call the no-executor version of `supplyAsync()` or `runAsync()`, Java normally schedules the task there.
+
+For now, remember:
+
+- No executor supplied: normally uses the common ForkJoinPool.
+- Executor supplied: uses the executor you provide.
+
+We will study thread-pool sizing and executor choices in more detail in the next lessons.
+
+<br>
+
+### 6.2 Can I provide my own Executor?
+
+Yes.
+
+The methods have overloads that accept an Executor.
+
+Example:
+
+```java
+ExecutorService executor =
+        Executors.newFixedThreadPool(5);
+
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(
+                () -> calculateBookingPrice(),
+                executor
+        );
+```
+
+Now the task is scheduled using the executor you supplied.
+
+This is useful because your application can control the pool used for a particular kind of work.
+
+For a Spring Boot application, you will normally prefer a properly configured, Spring-managed executor rather than creating unmanaged executors inside service methods.
+
+We will connect CompletableFuture with Spring Boot executors in a later lesson.
+
+<br>
+
+## 7. Retrieving the Result
+
+A CompletableFuture can be used like a Future.
+
+You can call:
+
+```java
+future.get();
+```
+
+Example:
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(() -> {
+            return "Booking confirmed";
+        });
+
+try {
+    String result = future.get();
+    System.out.println(result);
+
+} catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+
+} catch (ExecutionException e) {
+    System.out.println("Task failed: " + e.getCause());
+}
+```
+
+`get()` behaves like the `Future.get()` you already learned.
+
+If the result is not ready, the calling thread waits.
+
+<br>
+
+### 7.1 Does CompletableFuture remove blocking?
+
+No.
+
+This is an important point.
+
+If you call:
+
+```java
+future.get();
+```
+
+you are still blocking the calling thread until the result is available.
+
+CompletableFuture does not automatically make every part of your code non-blocking.
+
+Its major advantage is that it gives you methods to define follow-up actions without manually waiting for each intermediate result.
+
+We will see that in the next section.
+
+<br>
+
+### 7.2 join()
+
+CompletableFuture also provides:
+
+```java
+future.join();
+```
+
+It also waits for the result.
+
+The main difference you need to know now:
+
+- `get()` declares checked exceptions such as `InterruptedException` and `ExecutionException`.
+- `join()` throws an unchecked `CompletionException` when the task failed.
+
+Example:
+
+```java
+String result = future.join();
+```
+
+This can make simple examples shorter, but it does not mean `join()` is non-blocking.
+
+If the task is not complete, `join()` waits too.
+
+For now, use `get()` when you want to handle interruption explicitly, and understand that `join()` is another way to wait for the result.
+
+<br>
+
+## 8. The Most Important Idea: Continue When the Result Is Ready
+
+Now we reach one of the main reasons CompletableFuture is useful.
+
+Suppose you want to:
+
+1. Calculate a booking price asynchronously.
+2. When the price is ready, print it.
+
+With a basic Future, you might do this:
+
+```java
+Future<BigDecimal> future = executor.submit(
+        () -> calculateBookingPrice()
+);
+
+BigDecimal price = future.get();
+
+System.out.println("Price: " + price);
+```
+
+The caller waits at `get()`.
+
+With CompletableFuture, you can describe the next action:
+
+```java
+CompletableFuture<BigDecimal> future =
+        CompletableFuture.supplyAsync(
+                () -> calculateBookingPrice()
+        );
+
+future.thenAccept(price -> {
+    System.out.println("Price: " + price);
+});
+```
+
+Let's understand this carefully.
+
+<br>
+
+### 8.1 What does thenAccept() do?
+
+`thenAccept()` registers an action that receives the result after the previous stage completes.
+
+In our example:
+
+```java
+future.thenAccept(price -> {
+    System.out.println("Price: " + price);
+});
+```
+
+- The first task calculates the price.
+- When the result is ready, the action receives that price.
+- The action prints it.
+- The action does not return another result.
+
+This means you do not need to call `get()` just to pass the result to the next action.
+
+<br>
+
+### 8.2 Does thenAccept() wait for the result?
+
+No, it registers a continuation.
+
+The calling thread does not need to wait for the previous task to finish before registering the action.
+
+The action runs when the previous stage completes.
+
+The thread that executes the continuation depends on how and when the stage completes. We will study the different continuation methods in Lesson 6.
+
+<br>
+
+### 8.3 What does thenAccept() return?
+
+It returns another CompletableFuture:
+
+```java
+CompletableFuture<Void> next =
+        future.thenAccept(price -> {
+            System.out.println(price);
+        });
+```
+
+Why `Void`?
+
+Because the action consumes the price but does not return a new value.
+
+The original future still represents the price.
+
+The new future represents completion of the action that consumed the price.
+
+<br>
+
+## 9. Understanding the Three Basic Continuation Methods
+
+There are three methods you should recognize now:
+
+- `thenApply()`
+- `thenAccept()`
+- `thenRun()`
+
+We will study chaining and combining them deeply in Lesson 6. For now, learn what each one does.
+
+<br>
+
+### 9.1 thenApply()
+
+Use `thenApply()` when you receive a result and want to transform it into another result.
+
+Example:
+
+```java
+CompletableFuture<Integer> future =
+        CompletableFuture.supplyAsync(() -> 100);
+
+CompletableFuture<Integer> finalFuture =
+        future.thenApply(value -> value * 2);
+```
+
+What happens?
+
+1. The first stage produces `100`.
+2. `thenApply()` receives `100`.
+3. It multiplies the value by two.
+4. The next stage produces `200`.
+
+The type remains:
+
+```java
+CompletableFuture<Integer>
+```
+
+Because the input is an Integer and the output is also an Integer.
+
+You can also change the result type:
+
+```java
+CompletableFuture<String> messageFuture =
+        future.thenApply(value -> "Total: " + value);
+```
+
+Now the next stage produces a String.
+
+**Remember:** `thenApply()` transforms a result and returns a new result.
+
+<br>
+
+### 9.2 thenAccept()
+
+Use `thenAccept()` when you want to receive a result and use it, but do not need to return another result.
+
+Example:
+
+```java
+CompletableFuture<Integer> future =
+        CompletableFuture.supplyAsync(() -> 100);
+
+CompletableFuture<Void> next =
+        future.thenAccept(value -> {
+            System.out.println("Total: " + value);
+        });
+```
+
+It prints the value, but does not produce another useful value.
+
+**Remember:** `thenAccept()` consumes a result.
+
+<br>
+
+### 9.3 thenRun()
+
+Use `thenRun()` when you want to run an action after the previous stage completes, but you do not need the previous result.
+
+Example:
+
+```java
+CompletableFuture<Integer> future =
+        CompletableFuture.supplyAsync(() -> 100);
+
+CompletableFuture<Void> next =
+        future.thenRun(() -> {
+            System.out.println("Calculation stage finished");
+        });
+```
+
+Notice that the lambda does not receive the value `100`.
+
+It only runs after the previous stage completes normally.
+
+**Remember:** `thenRun()` runs an action after completion without receiving the previous result.
+
+<br>
+
+### 9.4 Comparison
+
+| Method | Receives previous result? | Returns a useful result? |
+|---|---:|---:|
+| `thenApply()` | Yes | Yes |
+| `thenAccept()` | Yes | No (`Void`) |
+| `thenRun()` | No | No (`Void`) |
+
+A simple way to choose:
+
+- Need to transform the result? Use `thenApply()`.
+- Need to use the result but not return anything? Use `thenAccept()`.
+- Need to run something after completion but do not need the result? Use `thenRun()`.
+
+<br>
+
+## 10. A Small End-to-End Example
+
+Let's create a simple booking-price flow.
+
+```java
+import java.math.BigDecimal;
+import java.util.concurrent.CompletableFuture;
+
+public class BookingServiceExample {
+
+    public static void main(String[] args) {
+
+        CompletableFuture<BigDecimal> priceFuture =
+                CompletableFuture.supplyAsync(() -> {
+
+                    System.out.println("Calculating booking price...");
+
+                    return new BigDecimal("1500.00");
+                });
+
+        CompletableFuture<String> messageFuture =
+                priceFuture.thenApply(price -> {
+
+                    return "Your booking price is " + price;
+                });
+
+        messageFuture.thenAccept(message -> {
+            System.out.println(message);
+        });
+
+        // Only for this small main-method demonstration:
+        // wait for the final stage to complete.
+        messageFuture.join();
+    }
+}
+```
+
+Possible output:
+
+```text
+Calculating booking price...
+Your booking price is 1500.00
+```
+
+<br>
+
+### 10.1 Follow the stages
+
+The flow is:
+
+```text
+supplyAsync()
+     |
+     | produces BigDecimal
+     v
+thenApply()
+     |
+     | converts price into a String
+     v
+thenAccept()
+     |
+     | prints the String
+     v
+Completion
+```
+
+Each stage starts from the completion of the previous stage.
+
+In this example, `join()` is used at the end only so the `main` method does not finish before the demonstration is complete.
+
+In a real application, you should design the request and task lifecycle deliberately. Do not add `join()` everywhere just to make asynchronous code appear to work.
+
+<br>
+
+## 11. CompletableFuture Can Be Completed Manually
+
+So far, we created futures using `supplyAsync()` and `runAsync()`.
+
+But you can also create an incomplete CompletableFuture yourself:
+
+```java
+CompletableFuture<String> future =
+        new CompletableFuture<>();
+```
+
+At this moment:
+
+- The future exists.
+- It has no result yet.
+- It is not completed.
+- Another part of your code can complete it later.
+
+You can complete it with:
+
+```java
+future.complete("Booking confirmed");
+```
+
+Now the future has a result.
+
+Example:
+
+```java
+CompletableFuture<String> future =
+        new CompletableFuture<>();
+
+future.complete("Booking confirmed");
+
+System.out.println(future.join());
+```
+
+Output:
+
+```text
+Booking confirmed
+```
+
+<br>
+
+### 11.1 Why would we complete it manually?
+
+Sometimes one part of your code creates a future, and another part receives the result later.
+
+For example:
+
+- An event arrives from another part of the application.
+- A callback receives a result.
+- A custom integration needs to expose a future-like result.
+
+You will not need manual completion for every normal service method. Most of the time, `supplyAsync()` or another CompletableFuture operation is more straightforward.
+
+<br>
+
+### 11.2 What if complete() is called more than once?
+
+The first successful completion wins.
+
+Example:
+
+```java
+CompletableFuture<String> future =
+        new CompletableFuture<>();
+
+boolean first = future.complete("First result");
+boolean second = future.complete("Second result");
+
+System.out.println(first);
+System.out.println(second);
+System.out.println(future.join());
+```
+
+Output:
+
+```text
+true
+false
+First result
+```
+
+The first call completed the future.
+
+The second call could not replace the result.
+
+<br>
+
+### 11.3 What does completeExceptionally() do?
+
+You can also complete a future with an error:
+
+```java
+CompletableFuture<String> future =
+        new CompletableFuture<>();
+
+future.completeExceptionally(
+        new IllegalStateException("Booking could not be processed")
+);
+```
+
+When code tries to retrieve the result, it receives an exception.
+
+This is useful when an external event or callback reports failure.
+
+<br>
+
+## 12. A CompletableFuture Can Also Fail
+
+A task submitted through `supplyAsync()` can throw an exception.
+
+Example:
+
+```java
+CompletableFuture<Integer> future =
+        CompletableFuture.supplyAsync(() -> {
+
+            int total = 1000;
+            int players = 0;
+
+            return total / players;
+        });
+```
+
+The task fails with `ArithmeticException`.
+
+The CompletableFuture completes exceptionally.
+
+If you call:
+
+```java
+future.join();
+```
+
+the failure is reported through `CompletionException`.
+
+If you call:
+
+```java
+future.get();
+```
+
+the failure is reported through `ExecutionException`.
+
+These are similar to the exception behaviors you learned with Future.
+
+We will study proper CompletableFuture exception handling in Lesson 7.
+
+<br>
+
+### 12.1 Important: A continuation may not run after failure
+
+Suppose:
+
+```java
+CompletableFuture<Integer> future =
+        CompletableFuture.supplyAsync(() -> {
+            throw new IllegalStateException("Calculation failed");
+        });
+
+future.thenAccept(result -> {
+    System.out.println("Result: " + result);
+});
+```
+
+The `thenAccept()` action expects a successful result.
+
+If the previous stage completes exceptionally, this normal success continuation is not executed.
+
+You need an error-handling stage if you want to handle the failure.
+
+We will cover that in Lesson 7.
+
+<br>
+
+## 13. Basic Future vs CompletableFuture
+
+Let's compare what you have learned.
+
+| Feature | Future | CompletableFuture |
+|---|---:|---:|
+| Represents a result available later | Yes | Yes |
+| Can be submitted through ExecutorService | Yes | Yes, through async factory methods |
+| Can retrieve result using `get()` | Yes | Yes |
+| Can wait with a timeout using `get()` | Yes | Yes |
+| Can request cancellation | Yes | Yes |
+| Can define a continuation after completion | Not conveniently | Yes |
+| Can transform a result with `thenApply()` | No | Yes |
+| Can consume a result with `thenAccept()` | No | Yes |
+| Can be manually completed | No | Yes |
+| Can complete exceptionally | Not directly through Future's API | Yes |
+
+The most important difference for this lesson:
+
+**CompletableFuture allows you to build actions that continue when earlier work completes.**
+
+It is not simply a replacement for every use of Future. Both types are useful, and CompletableFuture itself implements Future.
+
+<br>
+
+## 14. Common Mistakes
+
+<br>
+
+### Mistake 1: Thinking supplyAsync() returns the task's result directly
+
+Incorrect understanding:
+
+```java
+String result = CompletableFuture.supplyAsync(
+        () -> "Booking confirmed"
+);
+```
+
+This does not compile because `supplyAsync()` returns a CompletableFuture, not a String.
+
+Correct:
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(
+                () -> "Booking confirmed"
+        );
+```
+
+<br>
+
+### Mistake 2: Using runAsync() when you need a result
+
+If your task needs to return a booking price, use `supplyAsync()`.
+
+`runAsync()` is for tasks that do not return a useful value.
+
+<br>
+
+### Mistake 3: Thinking get() is non-blocking
+
+It is not.
+
+```java
+future.get();
+```
+
+waits if the result is not ready.
+
+<br>
+
+### Mistake 4: Thinking join() is non-blocking
+
+It is not.
+
+`join()` also waits if the result is not ready.
+
+<br>
+
+### Mistake 5: Assuming CompletableFuture always uses a new thread
+
+It does not create a new thread for every call.
+
+Without an explicit executor, async methods normally use the shared common ForkJoinPool.
+
+With an explicit executor, they use that executor.
+
+<br>
+
+### Mistake 6: Using the common pool for every kind of work without thinking
+
+The common pool is shared.
+
+For a Spring Boot application, you should think carefully about the kind of work being performed and which executor should run it.
+
+We will discuss executor configuration and blocking work in later lessons.
+
+<br>
+
+### Mistake 7: Assuming thenApply() runs immediately on the calling thread
+
+The continuation's execution depends on when the previous stage completes and which continuation method you use.
+
+Do not assume a specific thread unless you have chosen an execution method that gives you that control.
+
+<br>
+
+### Mistake 8: Forgetting to keep track of the final stage
+
+Each continuation method returns another stage.
+
+For example:
+
+```java
+CompletableFuture<String> first = ...;
+
+CompletableFuture<Integer> second =
+        first.thenApply(String::length);
+```
+
+`second` represents completion of the transformation.
+
+If you need to observe the final result or completion, keep track of the appropriate final future.
+
+<br>
+
+### Mistake 9: Assuming CompletableFuture makes database operations safe
+
+It does not.
+
+CompletableFuture does not prevent two customers from booking the same turf slot.
+
+Database transactions, constraints, locking, and correct booking-state design are still responsible for booking correctness.
+
+<br>
+
+### Mistake 10: Using asynchronous execution when it provides no benefit
+
+Not every method needs another thread.
+
+A small, fast calculation may be simpler to perform directly.
+
+Use asynchronous execution when it helps with concurrency, responsiveness, or coordinating independent work—not just because the API exists.
+
+<br>
+
+## 15. Practical Turf Booking Scenarios
+
+<br>
+
+### Scenario 1: Calculate a price asynchronously
+
+Your application needs to calculate a booking price.
+
+```java
+CompletableFuture<BigDecimal> priceFuture =
+        CompletableFuture.supplyAsync(() -> {
+
+            return pricingService.calculatePrice(
+                    turfId,
+                    startTime,
+                    endTime
+            );
+        });
+```
+
+The future represents the price that will be produced.
+
+In a real Spring application, the executor should be deliberately configured and supplied where appropriate.
+
+Also, do not move a calculation to another thread unless there is a real reason to do so.
+
+<br>
+
+### Scenario 2: Create a message after the price is ready
+
+```java
+CompletableFuture<String> messageFuture =
+        priceFuture.thenApply(price -> {
+            return "Total booking price: " + price;
+        });
+```
+
+The next stage receives the price and creates a message.
+
+No manual `get()` is needed between these two stages.
+
+<br>
+
+### Scenario 3: Use the result without returning another value
+
+```java
+messageFuture.thenAccept(message -> {
+    System.out.println(message);
+});
+```
+
+This stage receives the message and uses it.
+
+It does not return another useful value.
+
+<br>
+
+### Scenario 4: Run an action after a task completes
+
+```java
+priceFuture.thenRun(() -> {
+    System.out.println("Price calculation stage finished");
+});
+```
+
+This action does not receive the calculated price.
+
+It simply runs after the previous stage completes normally.
+
+<br>
+
+### Scenario 5: A notification task has no result
+
+```java
+CompletableFuture<Void> notificationFuture =
+        CompletableFuture.runAsync(() -> {
+            notificationService.sendBookingConfirmation(bookingId);
+        });
+```
+
+The task does not need to return a value.
+
+However, this example is only about the CompletableFuture API. It does not guarantee that the notification will survive an application crash.
+
+For important booking notifications, a transactional outbox and a durable worker process are more reliable than relying only on an in-memory asynchronous task.
+
+<br>
+
+## 16. Important Spring Boot Notes
+
+You will use CompletableFuture in Spring Boot services, but there are a few things to understand before using it in production.
+
+<br>
+
+### 16.1 CompletableFuture does not automatically make a Spring method asynchronous
+
+This method returns a CompletableFuture:
+
+```java
+public CompletableFuture<String> getBookingMessage() {
+    return CompletableFuture.supplyAsync(
+            () -> "Booking confirmed"
+    );
+}
+```
+
+The task inside `supplyAsync()` is scheduled asynchronously.
+
+But simply changing a method's return type to `CompletableFuture` does not automatically make all code inside it asynchronous.
+
+The actual execution behavior depends on how the future is created and completed.
+
+<br>
+
+### 16.2 Prefer a configured Spring-managed executor
+
+For production work, you should normally configure a Spring-managed executor with:
+
+- A deliberate pool size.
+- A bounded queue where appropriate.
+- A rejection policy.
+- A clear thread name prefix.
+- A lifecycle managed by Spring.
+
+Then pass that executor to the async method:
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(
+                () -> performWork(),
+                applicationExecutor
+        );
+```
+
+Here, `applicationExecutor` is an Executor bean configured by your Spring application.
+
+We will study this integration more practically in later lessons.
+
+<br>
+
+### 16.3 Do not create a new executor for every request
+
+Avoid:
+
+```java
+public CompletableFuture<String> doWork() {
+
+    ExecutorService executor =
+            Executors.newFixedThreadPool(5);
+
+    return CompletableFuture.supplyAsync(
+            () -> performWork(),
+            executor
+    );
+}
+```
+
+This creates a new executor whenever the method is called.
+
+It can create too many threads and make lifecycle management difficult.
+
+Prefer a shared, properly configured Spring-managed executor.
+
+<br>
+
+### 16.4 Be careful with Spring transactions
+
+A transaction is normally associated with the thread executing it.
+
+If you start work on another thread using CompletableFuture, do not assume that the new thread automatically participates in the original thread's transaction.
+
+For example, this is dangerous to assume:
+
+```java
+@Transactional
+public CompletableFuture<Void> processBooking() {
+
+    return CompletableFuture.runAsync(() -> {
+        // Do not assume this code shares the caller's transaction.
+        updateBooking();
+    });
+}
+```
+
+The asynchronous work runs on another thread.
+
+It does not automatically inherit the original transaction context.
+
+If the async operation needs a transaction, design the transaction boundary in the method that actually performs that work.
+
+<br>
+
+### 16.5 Do not use CompletableFuture as a distributed job queue
+
+A CompletableFuture exists in application memory.
+
+If the JVM stops, an in-memory future does not become a durable job that another application instance can recover.
+
+For important work that must survive restarts, use durable mechanisms such as an outbox and a worker system or message broker.
+
+<br>
+
+## 17. Interview Questions and Answers
+
+<br>
+
+### Q1. What is CompletableFuture?
+
+It is a Java class that represents a result that may become available later and allows you to define actions that run when earlier stages complete.
+
+<br>
+
+### Q2. Which interfaces does CompletableFuture implement?
+
+It implements `Future` and `CompletionStage`.
+
+<br>
+
+### Q3. What is the difference between supplyAsync() and runAsync()?
+
+`supplyAsync()` runs a task that returns a result.
+
+`runAsync()` runs a task that does not return a useful result.
+
+<br>
+
+### Q4. What does supplyAsync() return?
+
+It returns a `CompletableFuture` representing the result of the supplied task.
+
+<br>
+
+### Q5. What does runAsync() return?
+
+It returns a `CompletableFuture<Void>` because the task does not produce a useful result.
+
+<br>
+
+### Q6. Which executor is used if you do not provide one?
+
+Async methods such as `supplyAsync()` and `runAsync()` normally use `ForkJoinPool.commonPool()` when no executor is supplied.
+
+<br>
+
+### Q7. Can you provide your own Executor?
+
+Yes. Use the overload that accepts an Executor.
+
+<br>
+
+### Q8. Does CompletableFuture remove blocking?
+
+No. Methods such as `get()` and `join()` still block while waiting for an incomplete result. CompletableFuture provides continuation methods so you can often avoid manually waiting between stages.
+
+<br>
+
+### Q9. What is the difference between get() and join()?
+
+Both wait for the result.
+
+`get()` reports failures using checked exceptions such as `ExecutionException` and can throw `InterruptedException`.
+
+`join()` reports failures using unchecked `CompletionException`.
+
+<br>
+
+### Q10. What does thenApply() do?
+
+It receives the previous stage's result, transforms it, and produces a new result.
+
+<br>
+
+### Q11. What does thenAccept() do?
+
+It receives and consumes the previous result but does not return another useful value.
+
+<br>
+
+### Q12. What does thenRun() do?
+
+It runs an action after the previous stage completes normally and does not receive the previous result.
+
+<br>
+
+### Q13. Can a CompletableFuture be completed manually?
+
+Yes. You can use `complete()` to provide a value or `completeExceptionally()` to complete it with an error.
+
+<br>
+
+### Q14. Can CompletableFuture prevent double booking?
+
+No. Booking correctness must be enforced through database transactions, constraints, and appropriate concurrency control.
+
+<br>
+
+### Q15. Does a CompletableFuture survive an application restart?
+
+No. A normal CompletableFuture is in-memory state. It is not durable job storage.
+
+<br>
+
+## 18. Practice Questions With Answers
+
+<br>
+
+### Practice 1: Create a future that returns a String
+
+**Question:** Create a CompletableFuture that asynchronously returns `"Hello Turf"`.
+
+**Answer:**
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(() -> "Hello Turf");
+```
+
+<br>
+
+### Practice 2: Create a task with no result
+
+**Question:** Run a task asynchronously that prints `"Task started"`.
+
+**Answer:**
+
+```java
+CompletableFuture<Void> future =
+        CompletableFuture.runAsync(() -> {
+            System.out.println("Task started");
+        });
+```
+
+<br>
+
+### Practice 3: Transform a result
+
+**Question:** A future produces the integer `500`. Create another stage that doubles it.
+
+**Answer:**
+
+```java
+CompletableFuture<Integer> future =
+        CompletableFuture.supplyAsync(() -> 500);
+
+CompletableFuture<Integer> doubled =
+        future.thenApply(value -> value * 2);
+```
+
+The next stage produces `1000`.
+
+<br>
+
+### Practice 4: Consume a result
+
+**Question:** A future produces a booking price. Print the price using a continuation that does not return a result.
+
+**Answer:**
+
+```java
+priceFuture.thenAccept(price -> {
+    System.out.println(price);
+});
+```
+
+<br>
+
+### Practice 5: Run after completion without receiving the result
+
+**Question:** Run a message after a calculation completes. You do not need the calculation result.
+
+**Answer:**
+
+```java
+calculationFuture.thenRun(() -> {
+    System.out.println("Calculation finished");
+});
+```
+
+<br>
+
+### Practice 6: Supply a custom executor
+
+**Question:** Use an existing Executor named `executor` to run a task that returns `"Done"`.
+
+**Answer:**
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(
+                () -> "Done",
+                executor
+        );
+```
+
+<br>
+
+### Practice 7: Retrieve a result
+
+**Question:** Which method can retrieve a CompletableFuture result while waiting if necessary?
+
+**Answer:**
+
+Both:
+
+```java
+future.get();
+```
+
+and:
+
+```java
+future.join();
+```
+
+They differ in how they report failures.
+
+<br>
+
+### Practice 8: Complete manually
+
+**Question:** Create an incomplete future and complete it with `"Confirmed"`.
+
+**Answer:**
+
+```java
+CompletableFuture<String> future =
+        new CompletableFuture<>();
+
+future.complete("Confirmed");
+```
+
+<br>
+
+### Practice 9: Complete exceptionally
+
+**Question:** Complete a future exceptionally with an IllegalStateException.
+
+**Answer:**
+
+```java
+future.completeExceptionally(
+        new IllegalStateException("Operation failed")
+);
+```
+
+<br>
+
+### Practice 10: Choose the correct method
+
+**Question:** You have a result and want to convert it into another value. Which method should you use?
+
+**Answer:**
+
+Use `thenApply()`.
+
+<br>
+
+## 19. System Design Questions for Your Turf Project
+
+<br>
+
+### Question 1: You need to calculate a price and then create a response message. How could CompletableFuture help?
+
+**Answer:**
+
+Use `supplyAsync()` to calculate the price and `thenApply()` to transform the price into a response message.
+
+This lets you describe the next operation without calling `get()` between the two stages.
+
+<br>
+
+### Question 2: You need to send a booking notification, but the task does not return a value. Which method is suitable?
+
+**Answer:**
+
+`runAsync()` is suitable for demonstrating a task that returns no useful result.
+
+For production reliability, however, important notifications should be backed by durable processing, such as a transactional outbox. An in-memory CompletableFuture alone cannot guarantee delivery after a crash.
+
+<br>
+
+### Question 3: Should every database query be wrapped in supplyAsync()?
+
+**Answer:**
+
+No.
+
+Adding asynchronous execution creates additional scheduling and resource-management concerns.
+
+Use it when there is a clear benefit, such as coordinating independent operations or keeping a particular caller from waiting synchronously. Configure the executor carefully, especially for blocking database or network operations.
+
+<br>
+
+### Question 4: Can you use CompletableFuture to make two booking requests safe from a race condition?
+
+**Answer:**
+
+No.
+
+CompletableFuture can coordinate asynchronous work, but it does not enforce booking uniqueness.
+
+The database must protect the booking invariant using suitable constraints, transactions, and concurrency control.
+
+<br>
+
+### Question 5: If an asynchronous task updates a booking, will it share the controller's transaction?
+
+**Answer:**
+
+Do not assume that.
+
+The asynchronous task normally runs on another thread. Spring's ordinary thread-bound transaction context is not automatically transferred to that thread.
+
+Give the asynchronous operation its own clearly defined transaction boundary if it needs one.
+
+<br>
+
+### Question 6: Should you store important background jobs only as CompletableFuture objects?
+
+**Answer:**
+
+No.
+
+A CompletableFuture is in-memory coordination, not durable job storage. Important work that must survive restarts needs persistent records and a reliable worker or messaging mechanism.
+
+<br>
+
+## 20. Lesson Checklist
+
+Before moving to Lesson 6, make sure you can explain:
+
+- [ ] What CompletableFuture represents.
+- [ ] Why a basic Future can be inconvenient for follow-up actions.
+- [ ] That CompletableFuture implements Future and CompletionStage.
+- [ ] Which package contains CompletableFuture.
+- [ ] What `supplyAsync()` does.
+- [ ] What `runAsync()` does.
+- [ ] The difference between `supplyAsync()` and `runAsync()`.
+- [ ] What Supplier means.
+- [ ] What result type appears inside `CompletableFuture<T>`.
+- [ ] Which executor is normally used when no executor is supplied.
+- [ ] How to supply a custom Executor.
+- [ ] That `get()` and `join()` can block.
+- [ ] What a continuation is.
+- [ ] What `thenApply()` does.
+- [ ] What `thenAccept()` does.
+- [ ] What `thenRun()` does.
+- [ ] How to manually complete a future.
+- [ ] How to complete a future exceptionally.
+- [ ] How CompletableFuture reports task failures.
+- [ ] Why CompletableFuture does not solve double booking.
+- [ ] Why in-memory futures are not durable background jobs.
+- [ ] Why asynchronous work does not automatically share a Spring transaction.
+
+<br>
+
+## 21. Key Takeaways
+
+1. `CompletableFuture` represents a result that may become available later.
+2. It implements both `Future` and `CompletionStage`.
+3. Use `supplyAsync()` when the task returns a value.
+4. Use `runAsync()` when the task does not return a useful value.
+5. If you do not provide an executor, async factory methods normally use the common ForkJoinPool.
+6. You can provide your own Executor.
+7. `get()` and `join()` still wait for a result and can block.
+8. Continuation methods let you define what should happen after a stage completes.
+9. `thenApply()` transforms a result.
+10. `thenAccept()` consumes a result.
+11. `thenRun()` runs an action without receiving the previous result.
+12. A CompletableFuture can be completed manually or exceptionally.
+13. CompletableFuture does not automatically make database operations safe.
+14. CompletableFuture does not provide durable background-job storage.
+15. Async work does not automatically inherit the caller's Spring transaction.
+
+**The main idea of this lesson:**
+
+With a basic Future, you commonly wait and then process the result yourself.
+
+With CompletableFuture, you can describe the next operation and let it run when the previous result becomes available.
+
+<br>
+
+## 22. Next Lesson
+
+**Phase 4 — Lesson 6: CompletableFuture Chaining and Combining**
+
+In this lesson, you learned the basic methods:
+
+- `supplyAsync()`
+- `runAsync()`
+- `thenApply()`
+- `thenAccept()`
+- `thenRun()`
+
+In the next lesson, we will go deeper into chaining and combining asynchronous tasks.
+
+We will learn how to:
+
+- Pass the result of one stage into the next stage.
+- Run multiple independent tasks.
+- Combine results from different tasks.
+- Understand `thenCompose()`.
+- Understand `thenCombine()`.
+- Understand `allOf()` and `anyOf()`.
+
+We will use realistic Turf scenarios, such as fetching venue information and pricing data independently, then combining them into one booking response.
