@@ -1,0 +1,1357 @@
+<br>
+
+<br>
+
+# Practical Concurrency for Spring Boot - Phase 4, Lesson 6 : CompletableFuture Chaining and Combining
+
+<br>
+
+<br>
+
+
+<br>
+
+<br>
+
+<br>
+
+## 1. What You Will Learn
+
+In Lesson 5, you learned the basic idea of `CompletableFuture`:
+
+- It represents a result that may become available later.
+- `supplyAsync()` starts a task that returns a value.
+- `runAsync()` starts a task that does not return a value.
+- `get()` and `join()` retrieve the result and can make the current thread wait.
+- Methods such as `thenApply()` can run another operation after a result is ready.
+
+In this lesson, we will focus on **connecting multiple operations together**.
+
+You will learn:
+
+1. What chaining means.
+2. How to use `thenApply()`.
+3. How to use `thenAccept()` and `thenRun()` in a chain.
+4. How to use `thenCompose()` when one operation starts another asynchronous operation.
+5. How to use `thenCombine()` when two independent tasks produce results.
+6. How to use `allOf()` and `anyOf()`.
+7. How exceptions move through a chain.
+8. When these methods are useful in your Spring Boot Turf Booking System.
+
+We will start with small examples and build up gradually.
+
+<br>
+
+<br>
+
+## 2. First, Understand What a Chain Is
+
+A chain means that one operation runs after another operation has completed.
+
+Consider this normal, synchronous Java code:
+
+```java
+String venueName = "Green Field";
+
+String upperCaseName = venueName.toUpperCase();
+
+int nameLength = upperCaseName.length();
+
+System.out.println(nameLength);
+```
+
+The operations happen in this order:
+
+1. Store the venue name.
+2. Convert the name to uppercase.
+3. Find the length of the uppercase name.
+4. Print the length.
+
+Each operation uses the result of the previous operation.
+
+That is a simple chain of operations.
+
+With `CompletableFuture`, we can describe a similar sequence where the next operation runs after an earlier asynchronous operation completes.
+
+For example:
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(() -> "Green Field")
+                .thenApply(name -> name.toUpperCase())
+                .thenApply(name -> name + " Turf");
+```
+
+Read this from left to right:
+
+1. `supplyAsync()` produces the String `"Green Field"`.
+2. The first `thenApply()` receives that String and converts it to uppercase.
+3. The second `thenApply()` receives the uppercase String and adds `" Turf"`.
+4. The final future represents the final String.
+
+The final result will be:
+
+```text
+GREEN FIELD Turf
+```
+
+The important point is:
+
+**Each operation in the chain receives the result produced by the previous operation.**
+
+<br>
+
+<br>
+
+## 3. thenApply() — Transform a Result
+
+`thenApply()` is used when:
+
+- An earlier operation has produced a result.
+- You want to receive that result.
+- You want to transform it into another result.
+
+Its general form is:
+
+```java
+future.thenApply(result -> {
+    // use the previous result
+    // return a new result
+});
+```
+
+The lambda receives the previous result and must return a value.
+
+<br>
+
+<br>
+
+### 3.1 A Small Example
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(() -> "Green Field");
+
+CompletableFuture<Integer> lengthFuture =
+        future.thenApply(name -> name.length());
+```
+
+Let's understand each part.
+
+**First part:**
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(() -> "Green Field");
+```
+
+- A task is submitted for asynchronous execution.
+- The task returns the String `"Green Field"`.
+- `future` represents that String result.
+
+**Second part:**
+
+```java
+CompletableFuture<Integer> lengthFuture =
+        future.thenApply(name -> name.length());
+```
+
+- `thenApply()` waits for the previous future to complete before applying the operation.
+- It receives the previous result in the variable `name`.
+- `name.length()` calculates the number of characters.
+- The lambda returns an `Integer`.
+- Therefore, `lengthFuture` is a `CompletableFuture<Integer>`.
+
+The result is `11`.
+
+Notice that the type changed:
+
+```java
+CompletableFuture<String>
+```
+
+became:
+
+```java
+CompletableFuture<Integer>
+```
+
+That is allowed because `thenApply()` can transform one result type into another.
+
+<br>
+
+<br>
+
+### 3.2 The Same Example With Multiple Steps
+
+```java
+CompletableFuture<Integer> resultFuture =
+        CompletableFuture.supplyAsync(() -> "Green Field")
+                .thenApply(name -> name.length())
+                .thenApply(length -> length * 2);
+```
+
+Step by step:
+
+| Operation | Value |
+|---|---|
+| `supplyAsync()` | `"Green Field"` |
+| First `thenApply()` | `11` |
+| Second `thenApply()` | `22` |
+
+The final variable has this type:
+
+```java
+CompletableFuture<Integer>
+```
+
+because the final operation returns an integer.
+
+<br>
+
+<br>
+
+### 3.3 When Should You Use thenApply()?
+
+Use `thenApply()` when the next operation is a normal calculation or transformation that returns a value.
+
+Examples:
+
+- Convert a venue name to uppercase.
+- Calculate a service fee from a booking amount.
+- Convert an entity into a response DTO.
+- Format a date.
+- Calculate a total from an existing result.
+
+Example related to Turf:
+
+```java
+CompletableFuture<BigDecimal> finalPriceFuture =
+        CompletableFuture.supplyAsync(() -> new BigDecimal("1000"))
+                .thenApply(basePrice -> basePrice.add(new BigDecimal("100")));
+```
+
+The first task produces a base price of `1000`.
+
+The `thenApply()` operation adds `100`.
+
+The final future represents `1100`.
+
+For real booking prices, use the correct pricing rules and decimal calculations. This example only demonstrates chaining.
+
+<br>
+
+<br>
+
+## 4. thenAccept() — Use a Result Without Producing Another Result
+
+Sometimes you want to receive a result and do something with it, but you do not need to return another value.
+
+For that, use `thenAccept()`.
+
+Example:
+
+```java
+CompletableFuture<Void> resultFuture =
+        CompletableFuture.supplyAsync(() -> "Booking confirmed")
+                .thenAccept(message -> {
+                    System.out.println(message);
+                });
+```
+
+What happens?
+
+1. `supplyAsync()` produces `"Booking confirmed"`.
+2. `thenAccept()` receives that String in `message`.
+3. It prints the message.
+4. It does not return a new result.
+
+That is why the resulting type is:
+
+```java
+CompletableFuture<Void>
+```
+
+`Void` here means that this future does not provide a useful result value.
+
+You can use `thenAccept()` for actions such as:
+
+- Logging a completed result.
+- Passing a result to a method that does not return anything.
+- Sending a result to another component for further handling.
+
+Important: Do not assume that printing a message or calling a notification method inside `thenAccept()` makes the action reliable. If a notification must not be lost, use a durable design such as a transactional outbox or message queue.
+
+<br>
+
+<br>
+
+## 5. thenRun() — Run Something After Completion, Without Receiving the Result
+
+Use `thenRun()` when you want to run an operation after the previous future completes, but you do not need the previous result.
+
+Example:
+
+```java
+CompletableFuture<Void> future =
+        CompletableFuture.supplyAsync(() -> "Booking confirmed")
+                .thenRun(() -> {
+                    System.out.println("Previous task completed");
+                });
+```
+
+Here:
+
+- The first task produces `"Booking confirmed"`.
+- `thenRun()` does not receive `"Booking confirmed"`.
+- It only runs after the previous stage completes.
+- It does not produce a result.
+
+<br>
+
+<br>
+
+### 5.1 Difference Between thenApply(), thenAccept(), and thenRun()
+
+| Method | Receives previous result? | Returns a new result? |
+|---|---|---|
+| `thenApply()` | Yes | Yes |
+| `thenAccept()` | Yes | No |
+| `thenRun()` | No | No |
+
+Remember these three rules:
+
+- Use `thenApply()` to transform a result.
+- Use `thenAccept()` to consume a result.
+- Use `thenRun()` to run an action after completion without using the result.
+
+<br>
+
+<br>
+
+## 6. thenCompose() — When the Next Operation Also Returns a CompletableFuture
+
+This method needs extra attention.
+
+First, understand the problem it solves.
+
+Imagine that your application performs these operations:
+
+1. Find a booking by its ID.
+2. After finding the booking, load its venue details asynchronously.
+
+Suppose the first operation returns:
+
+```java
+CompletableFuture<Booking>
+```
+
+And the second operation returns:
+
+```java
+CompletableFuture<Venue>
+```
+
+The second operation itself returns a `CompletableFuture`.
+
+If you use `thenApply()` directly, you get a nested future.
+
+<br>
+
+<br>
+
+### 6.1 What Is a Nested CompletableFuture?
+
+Consider this example:
+
+```java
+CompletableFuture<CompletableFuture<String>> nestedFuture =
+        CompletableFuture.supplyAsync(() -> "booking-123")
+                .thenApply(bookingId ->
+                        CompletableFuture.supplyAsync(() ->
+                                "Venue for " + bookingId
+                        )
+                );
+```
+
+Read the types carefully.
+
+- The first `supplyAsync()` returns a `CompletableFuture<String>`.
+- The lambda inside `thenApply()` starts another asynchronous task.
+- That second task also returns a `CompletableFuture<String>`.
+- `thenApply()` wraps the lambda's returned value in its own future.
+
+The resulting type is therefore:
+
+```java
+CompletableFuture<CompletableFuture<String>>
+```
+
+This is called a nested future.
+
+Usually, this is not the result shape we want. We want one future representing the final String.
+
+<br>
+
+<br>
+
+### 6.2 Use thenCompose() to Flatten the Result
+
+`thenCompose()` is designed for this situation.
+
+```java
+CompletableFuture<String> venueFuture =
+        CompletableFuture.supplyAsync(() -> "booking-123")
+                .thenCompose(bookingId ->
+                        CompletableFuture.supplyAsync(() ->
+                                "Venue for " + bookingId
+                        )
+                );
+```
+
+Now the final type is:
+
+```java
+CompletableFuture<String>
+```
+
+What does `thenCompose()` do?
+
+1. It waits for the first future to complete.
+2. It passes the first result to the lambda.
+3. The lambda starts or returns another `CompletableFuture`.
+4. `thenCompose()` connects that second future to the overall chain.
+5. The final future represents the result of the second future.
+
+In short:
+
+**Use `thenCompose()` when the next operation itself returns a CompletableFuture and you want one continuous chain rather than a nested future.**
+
+<br>
+
+<br>
+
+### 6.3 thenApply() vs thenCompose()
+
+| Situation | Method |
+|---|---|
+| Next operation returns a normal value, such as `String`, `Integer`, or `VenueDto` | `thenApply()` |
+| Next operation returns a `CompletableFuture` | `thenCompose()` |
+
+Example with `thenApply()`:
+
+```java
+CompletableFuture<Integer> lengthFuture =
+        CompletableFuture.supplyAsync(() -> "Green Field")
+                .thenApply(name -> name.length());
+```
+
+The lambda returns an `Integer`.
+
+Example with `thenCompose()`:
+
+```java
+CompletableFuture<String> venueFuture =
+        CompletableFuture.supplyAsync(() -> "booking-123")
+                .thenCompose(bookingId -> loadVenueNameAsync(bookingId));
+```
+
+Assume `loadVenueNameAsync()` returns `CompletableFuture<String>`.
+
+The lambda returns a future, so `thenCompose()` is appropriate.
+
+<br>
+
+<br>
+
+### 6.4 A Turf-Oriented Example
+
+Imagine you have a service method:
+
+```java
+public CompletableFuture<Booking> findBookingAsync(Long bookingId) {
+    // Imagine this method loads the booking asynchronously.
+    return CompletableFuture.supplyAsync(() -> bookingRepository.findById(bookingId)
+            .orElseThrow());
+}
+```
+
+And another method:
+
+```java
+public CompletableFuture<VenueDto> findVenueForBookingAsync(Booking booking) {
+    return CompletableFuture.supplyAsync(() -> {
+        // Imagine this creates or loads the venue response.
+        return new VenueDto(booking.getVenue().getName());
+    });
+}
+```
+
+You can connect them like this:
+
+```java
+CompletableFuture<VenueDto> venueFuture =
+        findBookingAsync(bookingId)
+                .thenCompose(booking ->
+                        findVenueForBookingAsync(booking)
+                );
+```
+
+The first method returns `CompletableFuture<Booking>`.
+
+The second method returns `CompletableFuture<VenueDto>`.
+
+Because the second method returns a future, use `thenCompose()`.
+
+This is a simplified teaching example. In a real Spring Boot application, do not move JPA entities across asynchronous threads without considering transaction boundaries, lazy loading, persistence-context ownership, and the executor being used. Often it is safer to load the required data inside a properly managed service transaction and pass a DTO or simple values to later asynchronous work.
+
+<br>
+
+<br>
+
+## 7. thenCombine() — Combine Two Independent Futures
+
+So far, we have mostly chained operations:
+
+- First operation completes.
+- Then the next operation runs using its result.
+
+But sometimes two tasks do not depend on each other.
+
+Imagine that a booking details page needs:
+
+1. Venue information.
+2. A list of available facilities.
+
+If these tasks are independent, they can run at the same time.
+
+After both finish, you can combine their results.
+
+Use `thenCombine()` for this.
+
+<br>
+
+<br>
+
+### 7.1 A Simple Example
+
+```java
+CompletableFuture<String> venueFuture =
+        CompletableFuture.supplyAsync(() -> "Green Field");
+
+CompletableFuture<Integer> facilityCountFuture =
+        CompletableFuture.supplyAsync(() -> 5);
+
+CompletableFuture<String> summaryFuture =
+        venueFuture.thenCombine(
+                facilityCountFuture,
+                (venueName, facilityCount) ->
+                        venueName + " has " + facilityCount + " facilities"
+        );
+```
+
+Let's understand it.
+
+**Task 1:**
+
+```java
+CompletableFuture<String> venueFuture =
+        CompletableFuture.supplyAsync(() -> "Green Field");
+```
+
+This task produces the venue name.
+
+**Task 2:**
+
+```java
+CompletableFuture<Integer> facilityCountFuture =
+        CompletableFuture.supplyAsync(() -> 5);
+```
+
+This task produces the number of facilities.
+
+These two tasks do not depend on each other's results.
+
+**Combining them:**
+
+```java
+CompletableFuture<String> summaryFuture =
+        venueFuture.thenCombine(
+                facilityCountFuture,
+                (venueName, facilityCount) ->
+                        venueName + " has " + facilityCount + " facilities"
+        );
+```
+
+`thenCombine()` waits until both futures have completed successfully.
+
+Then it passes both results to the combining function:
+
+- `venueName` receives `"Green Field"`.
+- `facilityCount` receives `5`.
+
+The function returns:
+
+```text
+Green Field has 5 facilities
+```
+
+The final future is a `CompletableFuture<String>` because the combining function returns a String.
+
+<br>
+
+<br>
+
+### 7.2 When Should You Use thenCombine()?
+
+Use it when:
+
+- You have two independent asynchronous tasks.
+- Both tasks produce results.
+- You need both results to create a final result.
+
+Possible Turf examples:
+
+- Load venue details and facility details.
+- Load a user's profile and their non-sensitive display preferences.
+- Fetch two independent external service responses.
+- Retrieve independent information needed to build a page response.
+
+Do not use `thenCombine()` just to make code look asynchronous. Parallel execution adds complexity and uses resources. Use it when the tasks are genuinely independent and the latency benefit is useful.
+
+<br>
+
+<br>
+
+## 8. allOf() — Wait for Several Futures to Complete
+
+What if you have more than two futures?
+
+For example, a page needs:
+
+- Venue information.
+- Facility information.
+- Review summary.
+- Opening hours.
+
+You can use `CompletableFuture.allOf()`.
+
+Example:
+
+```java
+CompletableFuture<String> venueFuture =
+        CompletableFuture.supplyAsync(() -> "Green Field");
+
+CompletableFuture<Integer> facilityFuture =
+        CompletableFuture.supplyAsync(() -> 5);
+
+CompletableFuture<Integer> reviewCountFuture =
+        CompletableFuture.supplyAsync(() -> 120);
+
+CompletableFuture<Void> allCompleted =
+        CompletableFuture.allOf(
+                venueFuture,
+                facilityFuture,
+                reviewCountFuture
+        );
+```
+
+`allOf()` returns a `CompletableFuture<Void>`.
+
+It completes when all the supplied futures have completed.
+
+Important:
+
+**allOf() does not automatically give you a list of all the results.**
+
+You still need to retrieve the results from the individual futures.
+
+Example:
+
+```java
+CompletableFuture<String> summaryFuture =
+        CompletableFuture.allOf(
+                venueFuture,
+                facilityFuture,
+                reviewCountFuture
+        ).thenApply(ignored -> {
+            String venueName = venueFuture.join();
+            Integer facilityCount = facilityFuture.join();
+            Integer reviewCount = reviewCountFuture.join();
+
+            return venueName + " has " + facilityCount
+                    + " facilities and " + reviewCount + " reviews";
+        });
+```
+
+Why is `join()` used inside `thenApply()` here?
+
+Because `thenApply()` runs after the `allOf()` future has completed. At that point, all the individual futures have completed too, so their `join()` calls should not need to wait for unfinished work.
+
+However, `join()` can still throw an unchecked `CompletionException` if an individual future completed exceptionally.
+
+The final result is:
+
+```text
+Green Field has 5 facilities and 120 reviews
+```
+
+<br>
+
+<br>
+
+### 8.1 Does allOf() Run the Tasks?
+
+No. `allOf()` does not start the tasks.
+
+The tasks are started by the code that created or submitted the individual futures, such as `supplyAsync()`.
+
+`allOf()` creates a future that represents the completion of all the futures you pass to it.
+
+<br>
+
+<br>
+
+## 9. anyOf() — Continue When the First Future Completes
+
+`CompletableFuture.anyOf()` completes when any one of the supplied futures completes.
+
+Example:
+
+```java
+CompletableFuture<String> firstFuture =
+        CompletableFuture.supplyAsync(() -> {
+            sleep(1000);
+            return "First result";
+        });
+
+CompletableFuture<String> secondFuture =
+        CompletableFuture.supplyAsync(() -> {
+            sleep(2000);
+            return "Second result";
+        });
+
+CompletableFuture<Object> fastestFuture =
+        CompletableFuture.anyOf(firstFuture, secondFuture);
+```
+
+Assume `sleep()` is a helper method that pauses the current worker thread for the requested number of milliseconds.
+
+In this example:
+
+- The first task takes about one second.
+- The second task takes about two seconds.
+- `anyOf()` completes when the first of them completes.
+
+The result type is:
+
+```java
+CompletableFuture<Object>
+```
+
+Why `Object`?
+
+Because the futures passed to `anyOf()` may have different result types. Java uses `Object` as the common result type.
+
+If all your tasks return the same type, the result is still exposed as `Object` by this method, so you may need to check or cast the result carefully.
+
+Important:
+
+- `anyOf()` does not automatically cancel the slower tasks.
+- It does not mean the other tasks stop running.
+- If the first future to complete fails, the `anyOf()` future can also complete exceptionally.
+
+Use `anyOf()` only when your requirement is genuinely "continue when any one of these futures completes." It is not automatically the right tool for every fallback or fastest-response design.
+
+<br>
+
+<br>
+
+## 10. Async Versions of Chaining Methods
+
+You may notice methods such as:
+
+```java
+thenApply()
+thenApplyAsync()
+```
+
+And:
+
+```java
+thenAccept()
+thenAcceptAsync()
+```
+
+And:
+
+```java
+thenCombine()
+thenCombineAsync()
+```
+
+The difference is about where the next operation is executed.
+
+<br>
+
+<br>
+
+### 10.1 thenApply() vs thenApplyAsync()
+
+Example:
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(() -> "Green Field")
+                .thenApply(name -> name.toUpperCase());
+```
+
+`thenApply()` does not promise to use a separate thread. The continuation may run in the thread that completes the previous future, or immediately in the thread that attaches it if the previous future is already complete.
+
+Now consider:
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(() -> "Green Field")
+                .thenApplyAsync(name -> name.toUpperCase());
+```
+
+`thenApplyAsync()` schedules the continuation for asynchronous execution. If you do not provide an executor, it normally uses `ForkJoinPool.commonPool()`.
+
+You can also provide an executor:
+
+```java
+CompletableFuture<String> future =
+        CompletableFuture.supplyAsync(() -> "Green Field", turfExecutor)
+                .thenApplyAsync(
+                        name -> name.toUpperCase(),
+                        turfExecutor
+                );
+```
+
+Here, `turfExecutor` is an executor that your application has configured and manages.
+
+<br>
+
+<br>
+
+### 10.2 Which One Should You Use?
+
+Do not automatically add `Async` to every method.
+
+A simple transformation such as:
+
+```java
+.thenApply(name -> name.toUpperCase())
+```
+
+usually does not need a separate asynchronous scheduling step.
+
+For heavier work, or work that should run on a specific executor, an async method with an explicit executor may be appropriate.
+
+In a Spring Boot application:
+
+- Prefer an application-managed executor for your own background work.
+- Avoid creating a new thread pool for every request.
+- Avoid placing blocking database or HTTP calls on an unsuitable shared pool.
+- Configure capacity and rejection behavior deliberately.
+- Do not assume that an async continuation automatically uses the same Spring transaction as the earlier operation.
+
+<br>
+
+<br>
+
+## 11. Complete Turf Example: Build a Page Response From Independent Results
+
+Imagine a venue details page needs two independent pieces of information:
+
+1. Venue information.
+2. Facility information.
+
+For learning purposes, assume these methods return `CompletableFuture` values:
+
+```java
+public CompletableFuture<VenueDto> getVenueAsync(Long venueId) {
+    return CompletableFuture.supplyAsync(() -> {
+        return new VenueDto(venueId, "Green Field");
+    }, turfExecutor);
+}
+
+public CompletableFuture<List<String>> getFacilitiesAsync(Long venueId) {
+    return CompletableFuture.supplyAsync(() -> {
+        return List.of("Parking", "Changing Room", "Floodlights");
+    }, turfExecutor);
+}
+```
+
+Now combine them:
+
+```java
+public CompletableFuture<VenuePageDto> getVenuePageAsync(Long venueId) {
+
+    CompletableFuture<VenueDto> venueFuture =
+            getVenueAsync(venueId);
+
+    CompletableFuture<List<String>> facilitiesFuture =
+            getFacilitiesAsync(venueId);
+
+    return venueFuture.thenCombine(
+            facilitiesFuture,
+            (venue, facilities) ->
+                    new VenuePageDto(venue, facilities)
+    );
+}
+```
+
+What happens?
+
+1. `getVenueAsync()` starts the venue task.
+2. `getFacilitiesAsync()` starts the facilities task.
+3. Both tasks can make progress independently.
+4. `thenCombine()` waits for both results.
+5. It receives the `VenueDto` and the facility list.
+6. It creates a `VenuePageDto`.
+7. The returned future represents that page DTO.
+
+This is a good example of combining independent results.
+
+The DTO classes and service methods are simplified for teaching. In a real application, make sure the database access, transactions, executor configuration, and error handling are designed correctly.
+
+<br>
+
+<br>
+
+## 12. Important Spring Boot and Turf Booking Rules
+
+CompletableFuture chaining is useful, but it does not solve every concurrency problem.
+
+Keep these rules in mind.
+
+<br>
+
+<br>
+
+### 12.1 Do Not Use Parallel Reads When They Are Actually Dependent
+
+If task B needs the result of task A, use a chain:
+
+```java
+firstFuture.thenApply(result -> transform(result));
+```
+
+If task B itself returns a future, consider:
+
+```java
+firstFuture.thenCompose(result -> loadNextAsync(result));
+```
+
+Do not start both tasks independently if the second task cannot begin until the first result exists.
+
+<br>
+
+<br>
+
+### 12.2 Do Not Use Async Chaining as Double-Booking Protection
+
+Suppose two users try to book the same turf slot at nearly the same time.
+
+Using:
+
+```java
+thenApply()
+thenCompose()
+thenCombine()
+```
+
+does not prevent both requests from booking the same slot.
+
+You still need database-level correctness, such as:
+
+- A suitable unique constraint or exclusion constraint, depending on your booking model.
+- A transaction.
+- Appropriate locking or atomic conditional updates where required.
+- Correct handling of conflicts.
+
+The database must enforce the booking invariant. An in-memory future chain is not a distributed lock.
+
+<br>
+
+<br>
+
+### 12.3 Do Not Assume Spring Transactions Follow Async Work
+
+Spring's usual transaction context is bound to the current thread.
+
+If a continuation runs on another thread, do not assume it automatically participates in the earlier thread's transaction.
+
+Design the asynchronous operation with its own appropriate transaction boundary when it needs database access.
+
+<br>
+
+<br>
+
+### 12.4 Be Careful With JPA Entities and Lazy Relationships
+
+Do not casually load a JPA entity in one thread and access lazy relationships later in another thread.
+
+The persistence context may not be available on the second thread.
+
+Safer approaches often include:
+
+- Load the required fields inside a transaction.
+- Convert them to a DTO or simple values.
+- Pass those values to later asynchronous processing.
+
+<br>
+
+<br>
+
+### 12.5 CompletableFuture Is Not a Durable Job Queue
+
+A future exists in application memory.
+
+If the application process stops unexpectedly, an unfinished in-memory task is not automatically recovered.
+
+For important work such as payment follow-up, booking confirmation, or notifications that must not be lost, use durable mechanisms such as a transactional outbox and a message broker or job system.
+
+<br>
+
+<br>
+
+## 13. Common Mistakes
+
+<br>
+
+### Mistake 1: Using thenApply() When the Next Method Returns a CompletableFuture
+
+This can create:
+
+```java
+CompletableFuture<CompletableFuture<String>>
+```
+
+Use `thenCompose()` when you want one flattened chain.
+
+<br>
+
+### Mistake 2: Thinking allOf() Returns All Results
+
+It returns a `CompletableFuture<Void>`, not a list of the results.
+
+Keep references to the individual futures and retrieve their results after `allOf()` completes.
+
+<br>
+
+### Mistake 3: Thinking anyOf() Cancels the Other Tasks
+
+It does not automatically cancel the futures that did not finish first.
+
+<br>
+
+### Mistake 4: Adding Async to Every Continuation
+
+`thenApplyAsync()` schedules another asynchronous stage. That can add scheduling overhead and consume executor capacity.
+
+Use it when there is a reason to control where or how the continuation runs.
+
+<br>
+
+### Mistake 5: Calling get() Too Early
+
+For example:
+
+```java
+String name = venueFuture.get();
+Integer count = facilityFuture.get();
+```
+
+This makes the current thread wait for each result as it is requested.
+
+If the tasks are independent, start both first and combine them with `thenCombine()` or `allOf()`.
+
+<br>
+
+### Mistake 6: Ignoring Exceptions in One Part of a Combined Operation
+
+If a future used by `thenCombine()` or `allOf()` completes exceptionally, the combined operation may also complete exceptionally.
+
+Plan how the caller will handle failures. We will study CompletableFuture exception handling in more detail in the next lesson.
+
+<br>
+
+<br>
+
+## 14. Interview Questions and Answers
+
+<br>
+
+### Q1. What is CompletableFuture chaining?
+
+It means connecting multiple operations so that one operation runs after an earlier future completes. The next operation can use the previous operation's result.
+
+<br>
+
+### Q2. What is the difference between thenApply() and thenCompose()?
+
+`thenApply()` is used when the next operation returns a normal value.
+
+`thenCompose()` is used when the next operation returns another `CompletableFuture`, and you want to avoid a nested future.
+
+<br>
+
+### Q3. What is the difference between thenApply(), thenAccept(), and thenRun()?
+
+- `thenApply()` receives a result and returns a new result.
+- `thenAccept()` receives a result but does not return a useful result.
+- `thenRun()` does not receive the previous result and does not return a useful result.
+
+<br>
+
+### Q4. What does thenCombine() do?
+
+It combines the results of two independent futures after both have completed successfully.
+
+<br>
+
+### Q5. What does allOf() do?
+
+It returns a future that completes when all supplied futures have completed. It does not automatically return their results.
+
+<br>
+
+### Q6. What does anyOf() do?
+
+It returns a future that completes when any one of the supplied futures completes. It does not automatically cancel the others.
+
+<br>
+
+### Q7. What is the difference between thenApply() and thenApplyAsync()?
+
+`thenApply()` may run the continuation in the thread that completes the previous stage, or in the thread attaching it if the previous stage is already complete.
+
+`thenApplyAsync()` schedules the continuation for asynchronous execution. Without an explicit executor, it normally uses the common ForkJoinPool.
+
+<br>
+
+### Q8. Does CompletableFuture prevent two users from booking the same slot?
+
+No. Booking correctness must be enforced through database transactions and suitable database constraints or locking.
+
+<br>
+
+### Q9. Does an asynchronous continuation automatically share the previous Spring transaction?
+
+No. Do not assume thread-bound transaction context moves to another thread. Design the transaction boundary for the asynchronous operation explicitly.
+
+<br>
+
+<br>
+
+## 15. Practice Questions With Answers
+
+<br>
+
+### Practice 1: Transform a String Into Its Length
+
+**Question:** Create a future that produces `"Turf Booking"` and then transforms it into its length.
+
+**Answer:**
+
+```java
+CompletableFuture<Integer> lengthFuture =
+        CompletableFuture.supplyAsync(() -> "Turf Booking")
+                .thenApply(text -> text.length());
+```
+
+The final future represents an Integer.
+
+<br>
+
+### Practice 2: Convert a Venue Name to Uppercase
+
+**Question:** Create a future that produces `"green field"` and transforms it into uppercase.
+
+**Answer:**
+
+```java
+CompletableFuture<String> venueFuture =
+        CompletableFuture.supplyAsync(() -> "green field")
+                .thenApply(name -> name.toUpperCase());
+```
+
+<br>
+
+### Practice 3: Print a Completed Message
+
+**Question:** Create a future that produces `"Booking saved"` and then prints the result.
+
+**Answer:**
+
+```java
+CompletableFuture<Void> printFuture =
+        CompletableFuture.supplyAsync(() -> "Booking saved")
+                .thenAccept(message -> System.out.println(message));
+```
+
+`thenAccept()` receives the String and does not return a new result.
+
+<br>
+
+### Practice 4: Choose Between thenApply() and thenCompose()
+
+**Question:** A method named `loadVenueAsync()` returns `CompletableFuture<VenueDto>`. You already have a `CompletableFuture<Long>` containing a venue ID. Which method should connect them?
+
+**Answer:**
+
+Use `thenCompose()`:
+
+```java
+CompletableFuture<VenueDto> venueFuture =
+        venueIdFuture.thenCompose(venueId -> loadVenueAsync(venueId));
+```
+
+The method inside the lambda returns a CompletableFuture, so `thenCompose()` is appropriate.
+
+<br>
+
+### Practice 5: Combine Two Independent Results
+
+**Question:** One future returns a venue name. Another returns a facility count. Combine them into a sentence.
+
+**Answer:**
+
+```java
+CompletableFuture<String> venueFuture =
+        CompletableFuture.supplyAsync(() -> "Green Field");
+
+CompletableFuture<Integer> countFuture =
+        CompletableFuture.supplyAsync(() -> 4);
+
+CompletableFuture<String> summaryFuture =
+        venueFuture.thenCombine(
+                countFuture,
+                (name, count) -> name + " has " + count + " facilities"
+        );
+```
+
+<br>
+
+### Practice 6: Wait for Three Futures
+
+**Question:** You have three futures and want another operation to run after all three complete. Which method can you use?
+
+**Answer:**
+
+Use `CompletableFuture.allOf()`:
+
+```java
+CompletableFuture<Void> allCompleted =
+        CompletableFuture.allOf(firstFuture, secondFuture, thirdFuture);
+```
+
+Remember: retrieve the individual results from their original futures after `allCompleted` completes.
+
+<br>
+
+<br>
+
+## 16. System Design Questions
+
+<br>
+
+### Question 1: A venue details page needs venue information, facilities, and reviews. Which CompletableFuture methods could help?
+
+**Answer:**
+
+If all three operations are independent:
+
+1. Start each operation separately.
+2. Use `CompletableFuture.allOf()` to represent completion of all three.
+3. After completion, retrieve each result and build the response DTO.
+
+If there are exactly two independent results, `thenCombine()` is another option.
+
+Do not use parallel execution if one operation depends on another.
+
+<br>
+
+### Question 2: Loading a booking requires first finding the booking ID's record and then loading related information asynchronously. Which method is suitable?
+
+**Answer:**
+
+Use `thenCompose()` if the second method returns another `CompletableFuture`.
+
+The second operation depends on the first result, so this is a chain rather than two independent tasks.
+
+<br>
+
+### Question 3: Two users try to reserve the same turf slot. Can you solve this by chaining CompletableFutures?
+
+**Answer:**
+
+No.
+
+The booking operation needs database-level protection. Use a transaction and a database constraint or suitable locking strategy to enforce the no-overlapping-bookings rule.
+
+CompletableFuture only coordinates asynchronous work inside the application process. It does not provide distributed booking consistency.
+
+<br>
+
+### Question 4: A page needs data from two independent external services. One service is slow. What should you consider?
+
+**Answer:**
+
+You can start both calls independently and combine their results with `thenCombine()` or `allOf()`.
+
+Also consider:
+
+- Connection and request timeouts.
+- A dedicated, appropriately sized executor if the client performs blocking work.
+- Error handling and fallback behavior.
+- Limits on concurrent calls.
+- Whether the page can still be useful if one service fails.
+
+Do not allow slow external calls to consume an unlimited number of application threads.
+
+<br>
+
+<br>
+
+## 17. Lesson 6 Summary
+
+| Method | Main purpose |
+|---|---|
+| `thenApply()` | Transform the previous result |
+| `thenAccept()` | Receive and use the previous result without returning one |
+| `thenRun()` | Run after completion without receiving the previous result |
+| `thenCompose()` | Connect to another future-returning operation without nesting futures |
+| `thenCombine()` | Combine results from two independent futures |
+| `allOf()` | Create a future that completes when all supplied futures complete |
+| `anyOf()` | Create a future that completes when any supplied future completes |
+| `thenApplyAsync()` | Schedule a result transformation asynchronously |
+
+The most important distinctions to remember:
+
+1. **Normal result from the next operation:** use `thenApply()`.
+2. **Another CompletableFuture from the next operation:** use `thenCompose()`.
+3. **Two independent futures whose results are both needed:** use `thenCombine()`.
+4. **Wait for several futures:** use `allOf()`.
+5. **Continue when any one future completes:** use `anyOf()`.
+
+For your Turf Booking System, these methods can help coordinate independent reads and build responses. They do not replace database transactions, constraints, payment idempotency, or durable background processing.
+
+<br>
+
+<br>
+
+## 18. What Comes Next?
+
+In Lesson 7, we will study **CompletableFuture Exception Handling**.
+
+We will learn what happens when a task in a chain fails, how exceptions affect later stages, and how to handle failures using methods such as:
+
+- `exceptionally()`
+- `handle()`
+- `whenComplete()`
+
+Understanding failure handling is important before using CompletableFuture in real application code.
